@@ -373,3 +373,32 @@ class TestProjectModeAPI:
         ws = WorkspaceManager(deps.project_manager.project_dir(created["id"]))
         uploaded = [f for f in ws.list_files() if f.startswith("uploads/") and f != "uploads/.gitkeep"]
         assert uploaded, "upload should appear in workspace uploads/"
+
+
+class TestRunnerWindowsResolution:
+    def test_finalize_argv_wraps_batch_shims(self):
+        import os
+
+        from agentsite.engine.workspace_runner import _finalize_argv
+
+        if os.name == "nt":
+            assert _finalize_argv([r"C:\x\npm.cmd", "install"]) == [
+                "cmd.exe", "/c", r"C:\x\npm.cmd", "install",
+            ]
+            assert _finalize_argv([r"C:\x\node.exe", "-v"]) == [r"C:\x\node.exe", "-v"]
+        else:
+            assert _finalize_argv(["/usr/bin/npm", "install"]) == ["/usr/bin/npm", "install"]
+
+    def test_resolve_package_manager_returns_runnable(self):
+        import os
+
+        from agentsite.engine.workspace_runner import resolve_package_manager
+
+        pm = resolve_package_manager()
+        if pm is None:
+            import pytest
+
+            pytest.skip("no node toolchain installed")
+        # The WinError 193 regression: never the extension-less sh shim
+        if os.name == "nt":
+            assert pm.lower().endswith((".cmd", ".exe", ".bat")), pm

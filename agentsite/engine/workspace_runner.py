@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import shutil
 import time
 from dataclasses import dataclass
@@ -36,12 +37,28 @@ class CommandResult:
         return self.output[-_MAX_OUTPUT_CHARS:]
 
 
+def _which_executable(name: str) -> str | None:
+    """Resolve a tool to something CreateProcess can actually run.
+
+    On Windows, node installs ship BOTH an extension-less `npm` (a POSIX
+    sh script for Git Bash) and `npm.cmd`. ``shutil.which("npm")`` can
+    return the sh script, which fails with WinError 193 ("%1 is not a
+    valid Win32 application") — prefer the .cmd/.exe shims explicitly.
+    """
+    if os.name == "nt":
+        for candidate in (f"{name}.cmd", f"{name}.exe", f"{name}.bat"):
+            path = shutil.which(candidate)
+            if path:
+                return path
+    return shutil.which(name)
+
+
 def resolve_package_manager() -> str | None:
     """Full path to the package manager binary (pnpm preferred), or None."""
     pref = settings.package_manager
     if pref and pref != "auto":
-        return shutil.which(pref)
-    return shutil.which("pnpm") or shutil.which("npm")
+        return _which_executable(pref)
+    return _which_executable("pnpm") or _which_executable("npm")
 
 
 def _translate(cmd: list[str], pm_path: str) -> list[str]:
@@ -51,10 +68,18 @@ def _translate(cmd: list[str], pm_path: str) -> list[str]:
     return list(cmd)
 
 
+def _finalize_argv(argv: list[str]) -> list[str]:
+    """Batch shims (.cmd/.bat) need an explicit cmd.exe host on Windows."""
+    if os.name == "nt" and argv and argv[0].lower().endswith((".cmd", ".bat")):
+        return ["cmd.exe", "/c", *argv]
+    return argv
+
+
 async def run_workspace_command(
     workspace_dir: Path, argv: list[str], timeout_s: int
 ) -> CommandResult:
     """Run a command in the workspace, capturing merged stdout/stderr."""
+    argv = _finalize_argv(argv)
     cmd_str = " ".join(argv)
     start = time.monotonic()
     try:

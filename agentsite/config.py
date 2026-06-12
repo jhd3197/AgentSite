@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     # Phase E — triage routing + specialist delegation (project mode)
     triage_enabled: bool = True  # scope follow-up builds (tweak/partial/full)
     specialist_max_delegations: int = 4  # delegate_to_specialist calls per build
-    specialist_max_iterations: int = 15  # tool-loop cap per specialist run
+    specialist_max_iterations: int = 20  # tool-loop cap per specialist run
 
     # Phase 3 — pre-flight enforcement on write_file (Developer must read
     # design-system.md and architecture.md first). Default on.
