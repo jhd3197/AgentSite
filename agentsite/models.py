@@ -490,7 +490,7 @@ class WSEvent(BaseModel):
             "todo_update, steer_received, steer_applied, "
             "memory_extracted, refusal_detected, "
             "workspace_scaffolded, preview_ready, build_started, "
-            "build_finished, checkpoint_created"
+            "build_finished, checkpoint_created, verify_started, verify_report"
         )
     )
     agent: str = Field(default="", description="Agent name")

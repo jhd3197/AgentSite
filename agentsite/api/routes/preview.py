@@ -100,6 +100,23 @@ background:#0b0d12;color:#9aa4b2}div{text-align:center}h1{font-size:18px;color:#
 <p>Run a generation — the preview appears after the first successful build.</p></div></body></html>"""
 
 
+@router.get("/{project_id}/verify/{path:path}")
+async def preview_verify_artifact(project_id: str, path: str, pm=Depends(get_pm)):
+    """Serve verification artifacts (screenshots) from .agentsite/verify/."""
+    from ...engine.workspace import WorkspaceManager
+
+    verify_root = WorkspaceManager(pm.project_dir(project_id)).workspace_dir / ".agentsite" / "verify"
+    target = verify_root / path
+    try:
+        target.resolve().relative_to(verify_root.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied") from None
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    media_type = _MIME_TYPES.get(target.suffix.lower(), "application/octet-stream")
+    return FileResponse(target, media_type=media_type)
+
+
 @router.get("/{project_id}/app")
 async def preview_app_redirect(project_id: str):
     """Redirect to the trailing-slash form so relative asset paths resolve."""

@@ -14,9 +14,38 @@ import pytest
 
 from agentsite.engine.project_manager import ProjectManager
 from agentsite.engine.project_pipeline import ProjectGenerationPipeline
+from agentsite.engine.verifier import RouteCheck, VerifyReport
 from agentsite.engine.workspace import WorkspaceManager
 from agentsite.models import Project, ReviewFeedback, SitePlan, StyleSpec
 from agentsite.templates import find_template
+
+
+def _verify_report(ok: bool = True, with_shots: bool = False) -> VerifyReport:
+    return VerifyReport(
+        ok=ok,
+        routes=[RouteCheck(
+            route="index.html",
+            ok=ok,
+            content_chars=500 if ok else 5,
+            console_errors=[] if ok else ["ReferenceError: boom is not defined"],
+            screenshots=(
+                ["v1/index-desktop.jpg", "v1/index-mobile.jpg"] if with_shots else []
+            ),
+        )],
+        summary="stubbed",
+    )
+
+
+def _stub_verifier(monkeypatch, reports: list[VerifyReport]):
+    """Patch run_verification to pop canned reports (last one repeats)."""
+    import agentsite.engine.project_pipeline as pp_mod
+
+    queue = list(reports)
+
+    async def _fake(*args, **kwargs):
+        return queue.pop(0) if len(queue) > 1 else queue[0]
+
+    monkeypatch.setattr(pp_mod.verifier, "run_verification", _fake)
 
 SITE_PLAN = SitePlan(
     project_name="Test Site",
@@ -98,7 +127,9 @@ async def test_project_pipeline_end_to_end(tmp_path, monkeypatch):
         lambda model: FakePlannerAgent("agentsite_designer", StyleSpec(primary_color="#123456").model_dump_json()),
     )
     monkeypatch.setattr(caps_mod, "supports_tools", lambda model: True)
+    monkeypatch.setattr(caps_mod, "supports_vision", lambda model: False)
     monkeypatch.setattr(pp_mod, "AsyncAgent", FakeDevOrReviewer)
+    _stub_verifier(monkeypatch, [_verify_report(ok=True)])
 
     events = []
 
@@ -135,7 +166,8 @@ async def test_project_pipeline_end_to_end(tmp_path, monkeypatch):
     for expected in (
         "phase_start", "pipeline_plan", "agent_start", "agent_complete",
         "site_plan_ready", "style_spec_ready", "file_written",
-        "preview_ready", "review_feedback", "generation_complete",
+        "preview_ready", "verify_started", "verify_report",
+        "review_feedback", "generation_complete",
     ):
         assert expected in types, f"missing WS event: {expected}"
 
@@ -143,6 +175,7 @@ async def test_project_pipeline_end_to_end(tmp_path, monkeypatch):
     assert completes[-1].data["success"] is True
     assert "about.html" in completes[-1].data["files"]
     assert completes[-1].data["approved"] is True
+    assert completes[-1].data["verify_ok"] is True
 
     # -- one persistent dev session, one reviewer; approved on cycle 1 ----
     dev_agents = [a for a in FakeDevOrReviewer.instances if "developer" in a.name]
@@ -230,6 +263,8 @@ async def test_review_loop_feeds_back_into_same_session(tmp_path, monkeypatch):
 
     LoopFake.instances = []
     monkeypatch.setattr(pp_mod, "AsyncAgent", LoopFake)
+    monkeypatch.setattr(caps_mod, "supports_vision", lambda model: False)
+    _stub_verifier(monkeypatch, [_verify_report(ok=True)])
 
     pipeline = ProjectGenerationPipeline(pm_mgr, on_event=lambda e: None)
     result = await pipeline.generate(
@@ -243,3 +278,117 @@ async def test_review_loop_feeds_back_into_same_session(tmp_path, monkeypatch):
     assert "Hero section missing" in dev_agents[0].last_prompt
     reviewer_agents = [a for a in LoopFake.instances if "reviewer" in a.name]
     assert sum(a.run_count for a in reviewer_agents) == 2
+
+
+@pytest.mark.asyncio
+async def test_verify_gate_feeds_back_without_consulting_reviewer(tmp_path, monkeypatch):
+    """Failed verification is a hard gate: feedback goes straight to the dev
+    session and the reviewer is NOT consulted until the gate passes."""
+    FakeDevOrReviewer.instances = []
+
+    pm_mgr = ProjectManager(base_dir=tmp_path / "projects")
+    project = Project(name="Gate", mode="project", template_id="static-multipage")
+    pm_mgr.create(project)
+    WorkspaceManager(pm_mgr.project_dir(project.id)).scaffold(find_template("static-multipage"))
+
+    import agentsite.agents.designer as designer_mod
+    import agentsite.agents.pm as pm_mod
+    import agentsite.engine.capabilities as caps_mod
+    import agentsite.engine.project_pipeline as pp_mod
+
+    monkeypatch.setattr(
+        pm_mod, "create_pm_agent_auto",
+        lambda model: FakePlannerAgent("agentsite_pm", SITE_PLAN.model_dump_json()),
+    )
+    monkeypatch.setattr(
+        designer_mod, "create_designer_agent_auto",
+        lambda model: FakePlannerAgent("agentsite_designer", StyleSpec().model_dump_json()),
+    )
+    monkeypatch.setattr(caps_mod, "supports_tools", lambda model: True)
+    monkeypatch.setattr(caps_mod, "supports_vision", lambda model: False)
+
+    class GateFake(FakeDevOrReviewer):
+        async def run(self, prompt: str, deps=None, **kwargs):
+            self.run_count += 1
+            if "developer" in self.name:
+                self.last_prompt = prompt
+                return _result("done")
+            return _result(ReviewFeedback(score=9, approved=True).model_dump_json())
+
+    GateFake.instances = []
+    monkeypatch.setattr(pp_mod, "AsyncAgent", GateFake)
+    # First verification fails, second passes
+    _stub_verifier(monkeypatch, [_verify_report(ok=False), _verify_report(ok=True)])
+
+    events = []
+    pipeline = ProjectGenerationPipeline(pm_mgr, on_event=events.append)
+    result = await pipeline.generate(
+        project, slug="home", version_number=1, page_prompt="x",
+    )
+
+    assert result.success is True
+    dev_agents = [a for a in GateFake.instances if "developer" in a.name]
+    reviewer_agents = [a for a in GateFake.instances if "reviewer" in a.name]
+    assert len(dev_agents) == 1
+    assert dev_agents[0].run_count == 2, "gate failure must trigger a fix round"
+    assert "Automated verification FAILED" in dev_agents[0].last_prompt
+    assert "ReferenceError" in dev_agents[0].last_prompt
+    # Reviewer consulted exactly once — only after the gate passed
+    assert sum(a.run_count for a in reviewer_agents) == 1
+
+    reports = [e for e in events if e.type == "verify_report"]
+    assert len(reports) == 2
+    assert reports[0].data["ok"] is False and reports[1].data["ok"] is True
+    completes = [e for e in events if e.type == "generation_complete"]
+    assert completes[-1].data["verify_ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_vision_reviewer_gets_screenshots(tmp_path, monkeypatch):
+    """When the reviewer model supports vision, verification screenshots are
+    attached to the review call (desktop shots first)."""
+    pm_mgr = ProjectManager(base_dir=tmp_path / "projects")
+    project = Project(name="Vis", mode="project", template_id="static-multipage")
+    pm_mgr.create(project)
+    WorkspaceManager(pm_mgr.project_dir(project.id)).scaffold(find_template("static-multipage"))
+
+    import agentsite.agents.designer as designer_mod
+    import agentsite.agents.pm as pm_mod
+    import agentsite.engine.capabilities as caps_mod
+    import agentsite.engine.project_pipeline as pp_mod
+
+    monkeypatch.setattr(
+        pm_mod, "create_pm_agent_auto",
+        lambda model: FakePlannerAgent("agentsite_pm", SITE_PLAN.model_dump_json()),
+    )
+    monkeypatch.setattr(
+        designer_mod, "create_designer_agent_auto",
+        lambda model: FakePlannerAgent("agentsite_designer", StyleSpec().model_dump_json()),
+    )
+    monkeypatch.setattr(caps_mod, "supports_tools", lambda model: True)
+    monkeypatch.setattr(caps_mod, "supports_vision", lambda model: True)
+
+    captured = {}
+
+    class VisionFake(FakeDevOrReviewer):
+        async def run(self, prompt: str, deps=None, **kwargs):
+            self.run_count += 1
+            if "developer" in self.name:
+                return _result("done")
+            captured["images"] = kwargs.get("images")
+            captured["prompt"] = prompt
+            return _result(ReviewFeedback(score=9, approved=True).model_dump_json())
+
+    VisionFake.instances = []
+    monkeypatch.setattr(pp_mod, "AsyncAgent", VisionFake)
+    _stub_verifier(monkeypatch, [_verify_report(ok=True, with_shots=True)])
+
+    pipeline = ProjectGenerationPipeline(pm_mgr, on_event=lambda e: None)
+    result = await pipeline.generate(
+        project, slug="home", version_number=1, page_prompt="x",
+    )
+
+    assert result.success is True
+    assert captured["images"] is not None and len(captured["images"]) == 2
+    assert "desktop" in captured["images"][0], "desktop screenshots must come first"
+    assert "Screenshots of the RENDERED site" in captured["prompt"]

@@ -122,6 +122,11 @@ def supports_tools(model: str) -> bool:
     return get_capabilities(model).supports_tools
 
 
+def supports_vision(model: str) -> bool:
+    """Check if model supports image inputs."""
+    return get_capabilities(model).supports_vision
+
+
 def supports_structured_output(model: str) -> bool:
     """Check if model supports structured output (JSON schema)."""
     return get_capabilities(model).supports_structured_output

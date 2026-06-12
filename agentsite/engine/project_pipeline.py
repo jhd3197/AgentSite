@@ -42,6 +42,7 @@ from ..models import (
     WSEvent,
 )
 from ..templates import find_template, read_template_doc
+from . import verifier
 from .project_manager import ProjectManager
 from .tokens import render_tokens_css
 from .workspace import WorkspaceManager
@@ -171,6 +172,7 @@ class ProjectGenerationPipeline:
         slug: str,
         version: int,
         session_id: str,
+        images: list[str] | None = None,
     ) -> Any:
         """Run one agent with full WS event + AgentRun bookkeeping."""
         agent_model = self._agent_models.get(agent_key, "")
@@ -198,7 +200,7 @@ class ProjectGenerationPipeline:
         start = time.monotonic()
 
         try:
-            result = await agent.run(prompt, deps=deps)
+            result = await agent.run(prompt, deps=deps, images=images)
         except Exception as exc:
             run.status = "failed"
             run.completed_at = datetime.now(timezone.utc).isoformat()
@@ -314,7 +316,7 @@ class ProjectGenerationPipeline:
                 self._agent_models[agent_key] = _agent_model(agent_key, model, self._agent_configs)
 
             dev_model = self._agent_models["developer"]
-            from .capabilities import supports_tools
+            from .capabilities import supports_tools, supports_vision
 
             if not supports_tools(dev_model):
                 raise ValueError(
@@ -577,6 +579,8 @@ class ProjectGenerationPipeline:
             threshold = review_threshold or settings.review_approval_threshold
             approved = False
             success = True
+            verify_ok: bool | None = None
+            last_verify_report: verifier.VerifyReport | None = None
 
             for cycle in range(1, max_cycles + 1):
                 try:
@@ -635,6 +639,47 @@ class ProjectGenerationPipeline:
                 })
                 _checkpoint(f"v{version_number} cycle {cycle}")
 
+                # -- verify (hard gate the reviewer cannot override) --
+                last_verify_report = None
+                if settings.verify_enabled:
+                    serve_root = (
+                        ws.workspace_dir / (template.output_dir or "dist")
+                        if template.kind == "node"
+                        else ws.workspace_dir
+                    )
+                    planned, _ = verifier.plan_routes(template, site_plan, serve_root)
+                    await self._emit("verify_started", data={
+                        "routes": [label for label, _ in planned],
+                    })
+                    report = await verifier.run_verification(
+                        ws.workspace_dir, template, site_plan, version_number,
+                    )
+                    last_verify_report = report
+                    if not report.skipped:
+                        verify_ok = report.ok
+                    await self._emit("verify_report", data={
+                        "ok": report.ok,
+                        "skipped": report.skipped,
+                        "skip_reason": report.skip_reason,
+                        "summary": report.render_summary(),
+                        "duration_s": report.duration_s,
+                        "missing_pages": report.missing_pages,
+                        "routes": [r.model_dump() for r in report.routes],
+                        "screenshot_urls": [
+                            f"/preview/{project.id}/verify/{rel}"
+                            for rel in report.screenshot_rel_paths
+                        ],
+                    })
+                    if not verifier.evaluate_gate(report):
+                        if cycle == max_cycles:
+                            approved = False
+                            break
+                        dev_prompt = report.render_feedback() + (
+                            "\n\nThen run_command('build') and make sure it passes."
+                            if template.kind == "node" else ""
+                        )
+                        continue
+
                 # -- review --
                 reviewer_model = self._agent_models["reviewer"]
                 reviewer_agent = AsyncAgent(
@@ -648,17 +693,42 @@ class ProjectGenerationPipeline:
                 _apply_agent_overrides(reviewer_agent, "reviewer", self._agent_configs)
                 self._inject_driver(reviewer_agent, reviewer_model)
 
+                # Vision review: attach verification screenshots (desktop first)
+                # when the reviewer model supports images — judge what the
+                # user actually sees, not just the markup.
+                review_images: list[str] | None = None
+                verify_note = ""
+                if last_verify_report is not None and not last_verify_report.skipped:
+                    verify_note = f"\nAutomated verification: {last_verify_report.render_summary()}\n"
+                    shots = [
+                        str(ws.workspace_dir / ".agentsite" / "verify" / rel)
+                        for rel in last_verify_report.screenshot_rel_paths
+                    ]
+                    shots.sort(key=lambda s: 0 if "desktop" in s else 1)
+                    if shots and supports_vision(reviewer_model):
+                        review_images = shots[:6]
+
                 review_prompt = (
                     "Review the project workspace against this site plan:\n\n"
                     f"{self.site_plan_text}\n\n"
-                    f"Original user brief:\n{page_prompt}\n\n"
-                    "Inspect the files with your tools, then respond ONLY with the "
+                    f"Original user brief:\n{page_prompt}\n"
+                    + verify_note
+                    + (
+                        "\nScreenshots of the RENDERED site (desktop first, then mobile) "
+                        "are attached — judge the visual result from them: layout, "
+                        "hierarchy, spacing, responsiveness, polish. Use your file tools "
+                        "only to cross-check causes of visual problems.\n"
+                        if review_images
+                        else ""
+                    )
+                    + "\nInspect with your tools, then respond ONLY with the "
                     "ReviewFeedback JSON object."
                 )
                 review_deps = {"workspace_dir": ws.workspace_dir, "template": template}
                 review_result = await self._run_agent(
                     "reviewer", reviewer_agent, review_prompt, review_deps,
                     project_id=project.id, slug=slug, version=version_number, session_id=session_id,
+                    images=review_images,
                 )
                 review_text = getattr(review_result, "output_text", "") or ""
 
@@ -712,6 +782,7 @@ class ProjectGenerationPipeline:
                 "files_content": files_content,
                 "usage": self._usage,
                 "approved": approved,
+                "verify_ok": verify_ok,
             })
 
             return GroupResult(

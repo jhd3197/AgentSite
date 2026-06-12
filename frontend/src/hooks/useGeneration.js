@@ -15,9 +15,9 @@ export default function useGeneration(projectId) {
   const [livePreview, setLivePreview] = useState({}); // slug -> { html, contentHash }
   // Phase 7 — live todo list streamed from the deep-agent developer (if enabled)
   const [todos, setTodos] = useState([]);
-  // Project mode — built workspace preview + build/checkpoint status feed
+  // Project mode — built workspace preview + build/checkpoint/verify status feed
   const [previewReady, setPreviewReady] = useState(null); // { url, buildHash }
-  const [buildEvents, setBuildEvents] = useState([]); // { kind: "build"|"checkpoint", ... }
+  const [buildEvents, setBuildEvents] = useState([]); // { kind: "build"|"checkpoint"|"verify", ... }
   const ws = useWebSocket(projectId);
   const versionRefreshRef = useRef(null);
   const projectRefreshRef = useRef(null);
@@ -149,6 +149,40 @@ export default function useGeneration(projectId) {
             ref: msg.data?.ref || "",
           },
         ]);
+      }),
+      // Project mode — Playwright verification status lines for the progress feed.
+      ws.on("verify_started", (msg) => {
+        setBuildEvents((prev) => [
+          ...prev,
+          {
+            kind: "verify",
+            status: "running",
+            route_count: Array.isArray(msg.data?.routes) ? msg.data.routes.length : 0,
+          },
+        ]);
+      }),
+      ws.on("verify_report", (msg) => {
+        const d = msg.data || {};
+        const finished = {
+          status: d.skipped ? "skipped" : d.ok ? "ok" : "failed",
+          skip_reason: d.skip_reason || "",
+          summary: d.summary || "",
+          duration_s: d.duration_s ?? null,
+          missing_pages: d.missing_pages || [],
+          routes: d.routes || [],
+          screenshot_urls: d.screenshot_urls || [],
+        };
+        setBuildEvents((prev) => {
+          const next = [...prev];
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].kind === "verify" && next[i].status === "running") {
+              next[i] = { ...next[i], ...finished };
+              return next;
+            }
+          }
+          // verify_report without a matching verify_started — append standalone
+          return [...next, { kind: "verify", route_count: finished.routes.length, ...finished }];
+        });
       }),
       ws.on("pipeline_plan", (msg) => {
         const agents = msg.data?.required_agents;
