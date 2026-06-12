@@ -1,0 +1,15 @@
+{
+  "id": "static-multipage",
+  "name": "Static Multi-Page Site",
+  "description": "A multi-page static website built with semantic HTML, token-driven CSS, and vanilla JavaScript — no build step required.",
+  "kind": "static",
+  "install_cmd": null,
+  "build_cmd": null,
+  "dev_cmd": null,
+  "output_dir": null,
+  "entry": "index.html",
+  "tokens_path": "styles/tokens.css",
+  "tokens_format": "css-vars",
+  "protected_paths": [],
+  "requires_tools": true
+}

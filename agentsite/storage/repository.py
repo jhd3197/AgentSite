@@ -19,8 +19,8 @@ class ProjectRepository:
     async def create(self, project: Project) -> Project:
         """Insert a new project."""
         await self._db.conn.execute(
-            """INSERT INTO projects (id, name, description, model, style_spec, agent_overrides, user_id, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO projects (id, name, description, model, style_spec, agent_overrides, user_id, mode, template_id, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 project.id,
                 project.name,
@@ -29,6 +29,8 @@ class ProjectRepository:
                 project.style_spec.model_dump_json() if project.style_spec else None,
                 json.dumps(project.agent_overrides) if project.agent_overrides else None,
                 project.user_id,
+                project.mode,
+                project.template_id,
                 project.created_at,
                 project.updated_at,
             ),
@@ -66,13 +68,15 @@ class ProjectRepository:
         if user_id is not None:
             await self._db.conn.execute(
                 """UPDATE projects SET name=?, description=?, model=?, style_spec=?,
-                   agent_overrides=?, updated_at=? WHERE id=? AND user_id=?""",
+                   agent_overrides=?, mode=?, template_id=?, updated_at=? WHERE id=? AND user_id=?""",
                 (
                     project.name,
                     project.description,
                     project.model,
                     project.style_spec.model_dump_json() if project.style_spec else None,
                     json.dumps(project.agent_overrides) if project.agent_overrides else None,
+                    project.mode,
+                    project.template_id,
                     project.updated_at,
                     project.id,
                     user_id,
@@ -81,13 +85,15 @@ class ProjectRepository:
         else:
             await self._db.conn.execute(
                 """UPDATE projects SET name=?, description=?, model=?, style_spec=?,
-                   agent_overrides=?, updated_at=? WHERE id=?""",
+                   agent_overrides=?, mode=?, template_id=?, updated_at=? WHERE id=?""",
                 (
                     project.name,
                     project.description,
                     project.model,
                     project.style_spec.model_dump_json() if project.style_spec else None,
                     json.dumps(project.agent_overrides) if project.agent_overrides else None,
+                    project.mode,
+                    project.template_id,
                     project.updated_at,
                     project.id,
                 ),
@@ -125,6 +131,14 @@ class ProjectRepository:
         except (KeyError, IndexError):
             pass  # column may not exist in old DBs before migration runs
 
+        mode = "mockup"
+        template_id = None
+        try:
+            mode = row["mode"] or "mockup"
+            template_id = row["template_id"]
+        except (KeyError, IndexError):
+            pass  # columns may not exist in old DBs before migration runs
+
         return Project(
             id=row["id"],
             name=row["name"],
@@ -133,6 +147,8 @@ class ProjectRepository:
             style_spec=style_spec,
             agent_overrides=agent_overrides,
             user_id=user_id,
+            mode=mode,
+            template_id=template_id,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

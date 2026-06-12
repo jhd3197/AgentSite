@@ -1,0 +1,17 @@
+[
+  {
+    "id": "saas-landing",
+    "title": "SaaS product site",
+    "prompt": "Build a marketing site for Driftboard, a kanban tool for remote teams, with routes for Home, Features, Pricing, and FAQ. The Pricing page needs three tiers (Free, Pro at $12/user, Enterprise) with a monthly/annual toggle that updates the displayed prices, and the FAQ page should be an accordion driven by React state. Use a clean indigo-based palette with plenty of white space."
+  },
+  {
+    "id": "fitness-studio",
+    "title": "Fitness studio with class schedule",
+    "prompt": "Create a site for Northside Strength, a boutique gym, with Home, Classes, Schedule, and Membership routes. Build the Schedule page as a weekly grid that users can filter by class type (strength, cardio, mobility) using component state, and give the Membership page three plan cards with a highlighted recommended tier. Energetic look: dark background, bold condensed-feeling type, one vivid accent color for CTAs."
+  },
+  {
+    "id": "product-launch",
+    "title": "Product launch page",
+    "prompt": "Build a launch site for Lumen, a smart desk lamp, with Home, Specs, and Order routes. The home page needs a bold hero, alternating image/text feature rows, and a testimonial strip; the Order page needs a simple order form with client-side validation and a success confirmation state. Warm minimal aesthetic with a single strong accent color."
+  }
+]

@@ -331,6 +331,14 @@ class Project(BaseModel):
         description="Per-project provider API keys keyed by provider name (openai, claude, google, etc.). "
         "When set, these override the global environment keys for this project only.",
     )
+    mode: str = Field(
+        default="mockup",
+        description="'mockup' (page-version one-pagers) or 'project' (real template workspace).",
+    )
+    template_id: str | None = Field(
+        default=None,
+        description="Workspace template id (e.g. 'vite-react-tailwind') when mode=='project'.",
+    )
     user_id: str | None = Field(default=None)
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -480,7 +488,9 @@ class WSEvent(BaseModel):
             "discovery_form_requested, discovery_brief_submitted, "
             "critique_verdict, preview_update, skill_bound, "
             "todo_update, steer_received, steer_applied, "
-            "memory_extracted, refusal_detected"
+            "memory_extracted, refusal_detected, "
+            "workspace_scaffolded, preview_ready, build_started, "
+            "build_finished, checkpoint_created"
         )
     )
     agent: str = Field(default="", description="Agent name")

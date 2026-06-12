@@ -4,7 +4,8 @@ import useProject from "../hooks/useProject";
 import useVersions from "../hooks/useVersions";
 import useGeneration from "../hooks/useGeneration";
 import { useApp } from "../context/AppContext";
-import { getPreviewUrl, uploadAsset } from "../api/assets";
+import { getPreviewUrl, getAppPreviewUrl, uploadAsset } from "../api/assets";
+import { API_BASE } from "../api/client";
 import { getPage, createPage, listMessages, createMessage } from "../api/projects";
 import { streamChat } from "../api/chat";
 import PageBuilderHeader from "../components/layout/PageBuilderHeader";
@@ -86,6 +87,7 @@ export default function PageBuilderPage() {
           if (m.image) msg.image = m.image;
           if (m.meta && Object.keys(m.meta).length > 0) {
             if (m.meta.agents) msg.agents = m.meta.agents;
+            if (m.meta.builds) msg.builds = m.meta.builds;
             if (m.meta.done !== undefined) msg.done = m.meta.done;
           }
           return msg;
@@ -123,9 +125,21 @@ export default function PageBuilderPage() {
     prevGenerating.current = gen.generating;
   }, [gen.generating]);
 
-  const previewUrl = activeVersion
-    ? getPreviewUrl(projectId, slug, activeVersion) + `?t=${refreshKey}`
-    : getPreviewUrl(projectId, slug);
+  // Project mode — the preview is the built workspace served at /preview/{id}/app/.
+  // preview_ready WS events carry the URL + build hash (cache-buster) of the
+  // latest successful build; before the first one, fall back to the app root.
+  const isProjectMode = project?.mode === "project";
+  const previewUrl = isProjectMode
+    ? gen.previewReady
+      ? `${API_BASE}${gen.previewReady.url}?b=${encodeURIComponent(gen.previewReady.buildHash || refreshKey)}`
+      : getAppPreviewUrl(projectId) + `?b=${refreshKey}`
+    : activeVersion
+      ? getPreviewUrl(projectId, slug, activeVersion) + `?t=${refreshKey}`
+      : getPreviewUrl(projectId, slug);
+
+  // Live srcdoc streaming still applies while generating, but once a built
+  // preview is ready (project mode) the URL preview wins.
+  const liveHtml = isProjectMode && gen.previewReady ? null : gen.livePreview?.[slug]?.html;
 
   const isFirstBrief = (versions?.length || 0) === 0 && messages.every((m) => m.role !== "user");
 
@@ -310,7 +324,7 @@ export default function PageBuilderPage() {
     if (!gen.generating && Object.keys(gen.agents).length === 0) return;
 
     const agentEntries = Object.entries(gen.agents);
-    if (agentEntries.length === 0 && !gen.pipelineAgents) return;
+    if (agentEntries.length === 0 && !gen.pipelineAgents && gen.buildEvents.length === 0) return;
 
     const CANONICAL_ORDER = ["pm", "designer", "image", "developer", "markup", "style", "style_scss", "script", "reviewer"];
     const pipelineSet = gen.pipelineAgents || agentEntries.map(([name]) => name);
@@ -344,6 +358,7 @@ export default function PageBuilderPage() {
       const progressMsg = {
         role: "agent-progress",
         agents: agentsList,
+        builds: gen.buildEvents,
         done,
         _genActive: !done,
       };
@@ -360,10 +375,10 @@ export default function PageBuilderPage() {
       createMessage(projectId, slug, {
         role: "agent-progress",
         content: "",
-        meta: { agents: agentsList, done: true },
+        meta: { agents: agentsList, builds: gen.buildEvents, done: true },
       }).catch(() => {});
     }
-  }, [gen.agents, gen.generating, gen.pipelineAgents, getAgentLabel, projectId, slug]);
+  }, [gen.agents, gen.generating, gen.pipelineAgents, gen.buildEvents, getAgentLabel, projectId, slug]);
 
   // Add error message
   useEffect(() => {
@@ -452,8 +467,8 @@ export default function PageBuilderPage() {
             ) : (
               <PreviewFrame
                 src={previewUrl}
-                html={gen.livePreview?.[slug]?.html}
-                contentHash={gen.livePreview?.[slug]?.contentHash}
+                html={liveHtml}
+                contentHash={liveHtml ? gen.livePreview?.[slug]?.contentHash : null}
                 editSrcDoc={editMode ? visualEdit.srcDoc : null}
                 width={device}
                 frame={deviceFrame}

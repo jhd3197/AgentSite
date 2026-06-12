@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Sparkle, WarningCircle, SpinnerGap, CheckCircle, CaretDown, CaretRight, Timer, Lightning, Terminal, Copy, ArrowsOut, X, Export, Brain, ArrowCounterClockwise, Wrench } from "@phosphor-icons/react";
+import { Sparkle, WarningCircle, SpinnerGap, CheckCircle, CaretDown, CaretRight, Timer, Lightning, Terminal, Copy, ArrowsOut, X, Export, Brain, ArrowCounterClockwise, Wrench, GitCommit } from "@phosphor-icons/react";
 
 function formatDuration(seconds) {
   if (seconds < 60) return `${Math.round(seconds * 10) / 10}s`;
@@ -236,10 +236,54 @@ function buildAgentLogs(agents) {
   return lines.join("\n");
 }
 
+// Project mode — build / checkpoint status lines streamed during generation.
+function BuildStatusLine({ event: b }) {
+  if (b.kind === "checkpoint") {
+    return (
+      <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+        <GitCommit size={11} className="shrink-0" />
+        <span className="truncate">{b.message}</span>
+        {b.ref && (
+          <span className="font-mono text-slate-600 shrink-0">{String(b.ref).slice(0, 7)}</span>
+        )}
+      </div>
+    );
+  }
+  const failed = b.status === "failed";
+  return (
+    <div>
+      <div className={`flex items-center gap-1.5 text-[11px] ${failed ? "text-red-400" : "text-slate-400"}`}>
+        {b.status === "running" && (
+          <SpinnerGap className="animate-spin text-brand-400 shrink-0" size={11} />
+        )}
+        {b.status === "ok" && (
+          <CheckCircle className="text-emerald-400 shrink-0" weight="fill" size={11} />
+        )}
+        {failed && (
+          <WarningCircle className="text-red-400 shrink-0" weight="fill" size={11} />
+        )}
+        <span className="font-mono truncate">{b.command || "build"}</span>
+        {b.status === "running" && <span className="text-slate-500 shrink-0">building…</span>}
+        {failed && <span className="shrink-0">build failed — retrying</span>}
+        {b.status !== "running" && b.duration_s != null && (
+          <span className="ml-auto text-slate-500 tabular-nums shrink-0">
+            {formatDuration(b.duration_s)}
+          </span>
+        )}
+      </div>
+      {failed && b.output_tail && (
+        <pre className="mt-1 text-[10px] text-red-300/70 whitespace-pre-wrap font-mono max-h-24 overflow-y-auto bg-red-950/30 rounded-lg p-2 border border-red-500/10">
+          {b.output_tail}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 function AgentProgressMessage({ message }) {
   const [expanded, setExpanded] = useState(false);
   const [logsCopied, setLogsCopied] = useState(false);
-  const { agents = [], done } = message;
+  const { agents = [], done, builds = [] } = message;
 
   const current = agents.find((a) => a.status === "running");
   const lastCompleted = [...agents].reverse().find((a) => a.status === "complete");
@@ -273,6 +317,13 @@ function AgentProgressMessage({ message }) {
             <CaretRight className="text-slate-500 shrink-0" size={12} />
           )}
         </button>
+        {builds.length > 0 && (
+          <div className="mt-2 space-y-1 border-t border-slate-800 pt-2">
+            {builds.slice(-4).map((b, i) => (
+              <BuildStatusLine key={i} event={b} />
+            ))}
+          </div>
+        )}
         {expanded && (
           <div className="mt-3 space-y-2 border-t border-slate-800 pt-3">
             {agents.map((a) => (

@@ -249,7 +249,9 @@ def generate_image(ctx: RunContext, prompt: str, filename: str) -> str:
     if on_asset_created:
         on_asset_created(safe_name)
 
-    return f"assets/{safe_name}"
+    # Workspace tools override the reference prefix (e.g. "uploads/")
+    prefix = ctx.deps.get("asset_rel_prefix", "assets/")
+    return f"{prefix}{safe_name}"
 
 
 def list_library(ctx: RunContext) -> str:

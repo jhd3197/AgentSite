@@ -19,5 +19,9 @@ export const getPreviewUrl = (projectId, slug, version) => {
   return `${API_BASE}/preview/${projectId}/${slug}`;
 };
 
+// Project mode — built/static workspace served at a single app root.
+export const getAppPreviewUrl = (projectId) =>
+  `${API_BASE}/preview/${projectId}/app/`;
+
 export const getExportUrl = (projectId) =>
   `${API_BASE}/api/projects/${projectId}/export`;

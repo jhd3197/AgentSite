@@ -66,6 +66,8 @@ Sequential:
 
 Agent personas/system prompts live in `agentsite/agents/personas.py`. Each agent has a factory module (`pm.py`, `designer.py`, `developer.py`, `reviewer.py`). The orchestrator wires them together in `agentsite/agents/orchestrator.py`.
 
+**Project mode** (`project.mode == "project"`): instead of page-version one-pagers, the project gets a real workspace at `~/.agentsite/projects/{id}/workspace/` scaffolded from a template in `agentsite/templates/` (`static-multipage`, `vite-react-tailwind`). `agentsite/engine/project_pipeline.py` runs PM → Designer (tokens rendered to a real file via `engine/tokens.py`) → ONE persistent developer session (`agents/workspace_tools.py`: read/write/edit_file/search/run_command) → Reviewer, with review feedback and `npm run build` errors fed back into the same session as targeted edits. Versioning = git checkpoints (`engine/workspace.py`); preview = `/preview/{id}/app/` (serves `dist/` for node templates after `engine/workspace_runner.py` builds); export zips the workspace. Mockup mode (the original `pipeline.py` flow) remains the default and the fallback for non-tool-capable models. Roadmap: `.planning/project-workspace-roadmap.md` (phases D/E pending: Playwright verify, triage routing).
+
 **Real-time updates**: Generation progress flows via WebSocket from `agentsite/api/websocket.py` to `useWebSocket` / `useGeneration` hooks. The Page Builder updates ChatSidebar, PreviewFrame, and ProgressPipeline components in response.
 
 **Storage**: SQLite database (projects + generations tables) managed in `agentsite/storage/`. Generated site files are written to `~/.agentsite/projects/{id}/site/` via agent tools defined in `agentsite/agents/tools.py`.

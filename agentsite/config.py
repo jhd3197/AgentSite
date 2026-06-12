@@ -35,6 +35,15 @@ class Settings(BaseSettings):
     # Response caching
     cache_enabled: bool = False
 
+    # Project-mode workspaces (Phase A-C of project-workspace roadmap)
+    default_template: str = "static-multipage"
+    package_manager: str = "auto"  # "auto" (pnpm then npm) | "npm" | "pnpm"
+    install_timeout_s: int = 600
+    build_timeout_s: int = 300
+    workspace_max_file_kb: int = 256  # per-file cap when capturing text to DB
+    project_max_cycles: int = 3  # dev->build->review cycles per generation
+    project_dev_max_iterations: int = 40  # tool-loop iterations per dev run
+
     # Phase 3 — pre-flight enforcement on write_file (Developer must read
     # design-system.md and architecture.md first). Default on.
     preflight_enabled: bool = True

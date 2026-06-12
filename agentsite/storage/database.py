@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS projects (
     style_spec TEXT,
     agent_overrides TEXT,
     user_id TEXT,
+    mode TEXT NOT NULL DEFAULT 'mockup',
+    template_id TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -225,6 +227,18 @@ class Database:
         if columns and "user_id" not in columns:
             logger.info("Adding 'user_id' column to projects table...")
             await self._conn.execute("ALTER TABLE projects ADD COLUMN user_id TEXT")
+            await self._conn.commit()
+
+        # Project-mode workspaces — add mode + template_id to projects
+        if columns and "mode" not in columns:
+            logger.info("Adding 'mode' column to projects table...")
+            await self._conn.execute(
+                "ALTER TABLE projects ADD COLUMN mode TEXT NOT NULL DEFAULT 'mockup'"
+            )
+            await self._conn.commit()
+        if columns and "template_id" not in columns:
+            logger.info("Adding 'template_id' column to projects table...")
+            await self._conn.execute("ALTER TABLE projects ADD COLUMN template_id TEXT")
             await self._conn.commit()
 
         # Phase 13 — add strategy + model columns to agent_runs if missing

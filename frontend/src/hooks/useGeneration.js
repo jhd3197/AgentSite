@@ -15,6 +15,9 @@ export default function useGeneration(projectId) {
   const [livePreview, setLivePreview] = useState({}); // slug -> { html, contentHash }
   // Phase 7 — live todo list streamed from the deep-agent developer (if enabled)
   const [todos, setTodos] = useState([]);
+  // Project mode — built workspace preview + build/checkpoint status feed
+  const [previewReady, setPreviewReady] = useState(null); // { url, buildHash }
+  const [buildEvents, setBuildEvents] = useState([]); // { kind: "build"|"checkpoint", ... }
   const ws = useWebSocket(projectId);
   const versionRefreshRef = useRef(null);
   const projectRefreshRef = useRef(null);
@@ -104,6 +107,49 @@ export default function useGeneration(projectId) {
       ws.on("asset_created", (msg) => {
         setGeneratedAssets((prev) => [...prev, msg.data]);
       }),
+      // Project mode — a successful build is being served; swap to URL preview.
+      ws.on("preview_ready", (msg) => {
+        if (!msg.data?.url) return;
+        setPreviewReady({
+          url: msg.data.url,
+          buildHash: msg.data.build_hash || "",
+        });
+      }),
+      // Project mode — build status lines for the progress feed.
+      ws.on("build_started", (msg) => {
+        setBuildEvents((prev) => [
+          ...prev,
+          { kind: "build", command: msg.data?.command || "build", status: "running" },
+        ]);
+      }),
+      ws.on("build_finished", (msg) => {
+        const finished = {
+          status: msg.data?.ok ? "ok" : "failed",
+          duration_s: msg.data?.duration_s ?? null,
+          output_tail: msg.data?.output_tail || "",
+        };
+        setBuildEvents((prev) => {
+          const next = [...prev];
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].kind === "build" && next[i].status === "running") {
+              next[i] = { ...next[i], ...finished };
+              return next;
+            }
+          }
+          // build_finished without a matching build_started — append standalone
+          return [...next, { kind: "build", command: "build", ...finished }];
+        });
+      }),
+      ws.on("checkpoint_created", (msg) => {
+        setBuildEvents((prev) => [
+          ...prev,
+          {
+            kind: "checkpoint",
+            message: msg.data?.message || "Checkpoint created",
+            ref: msg.data?.ref || "",
+          },
+        ]);
+      }),
       ws.on("pipeline_plan", (msg) => {
         const agents = msg.data?.required_agents;
         if (agents && agents.length > 0) {
@@ -162,6 +208,8 @@ export default function useGeneration(projectId) {
     setParallelGroups(null);
     setLivePreview({});
     setTodos([]);
+    setPreviewReady(null);
+    setBuildEvents([]);
     ws.connect();
   }, [ws]);
 
@@ -192,5 +240,5 @@ export default function useGeneration(projectId) {
     ws.send({ type: "steer", text: text.trim() });
   }, [ws]);
 
-  return { generating, agents, files, generatedAssets, error, pipelineAgents, agentMeta, parallelGroups, livePreview, todos, start, steer, prepareBuildStream, onVersionRefresh, onProjectRefresh };
+  return { generating, agents, files, generatedAssets, error, pipelineAgents, agentMeta, parallelGroups, livePreview, todos, previewReady, buildEvents, start, steer, prepareBuildStream, onVersionRefresh, onProjectRefresh };
 }

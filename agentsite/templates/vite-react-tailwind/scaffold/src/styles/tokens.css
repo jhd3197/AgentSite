@@ -1,0 +1,27 @@
+/*
+ * Design tokens — the Designer agent rewrites this file.
+ * These feed Tailwind 4's theme: reference them ONLY through Tailwind
+ * utilities (bg-primary, text-text, border-border, font-heading, rounded-lg…)
+ * in components; never hardcode colors in JSX or CSS.
+ */
+@theme {
+  /* Colors */
+  --color-primary: #2563eb;
+  --color-secondary: #1e40af;
+  --color-accent: #f59e0b;
+  --color-bg: #ffffff;
+  --color-surface: #f8fafc;
+  --color-text: #1f2937;
+  --color-text-secondary: #6b7280;
+  --color-border: #e5e7eb;
+
+  /* Fonts */
+  --font-heading: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Radii (sm / DEFAULT / lg) */
+  --radius-sm: 4px;
+  --radius: 8px;
+  --radius-lg: 12px;
+}
