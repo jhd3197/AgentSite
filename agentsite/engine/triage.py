@@ -10,10 +10,25 @@ from __future__ import annotations
 
 import logging
 
+from pydantic import Field
+
 from ..models import TriageDecision
 from .extract import extract_structured
 
 logger = logging.getLogger("agentsite.triage")
+
+
+class _StrictTriageDecision(TriageDecision):
+    """Extraction schema: bucket and reason are REQUIRED.
+
+    Without this, a model that returns ``{}`` silently becomes the default
+    TriageDecision (bucket='full', empty reason) and masquerades as a real
+    classification. Requiring the fields makes empty answers fail validation,
+    triggering the extraction retry and then the visible 'full' fallback.
+    """
+
+    bucket: str = Field(description=TriageDecision.model_fields["bucket"].description)
+    reason: str = Field(description="One short sentence explaining the choice. Required.")
 
 _VALID_BUCKETS = {"tweak", "partial", "full"}
 
@@ -76,12 +91,13 @@ async def triage_request(
         )
 
     try:
-        decision = await extract_structured(
-            TriageDecision,
+        strict = await extract_structured(
+            _StrictTriageDecision,
             _render_context(prompt, site_plan_text, file_tree),
             model,
             instruction=_TRIAGE_INSTRUCTION,
         )
+        decision = TriageDecision(**strict.model_dump()) if strict is not None else None
     except Exception:
         logger.warning("Triage classification failed — defaulting to full", exc_info=True)
         decision = None

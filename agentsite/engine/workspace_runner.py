@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import shutil
 import time
 from dataclasses import dataclass
@@ -104,6 +105,8 @@ async def run_workspace_command(
 
     duration = time.monotonic() - start
     output = (stdout or b"").decode("utf-8", errors="replace")
+    # Strip ANSI color codes (vite et al.) — noise for agents and the UI
+    output = re.sub(r"\x1b\[[0-9;]*m", "", output)
     if len(output) > _MAX_OUTPUT_CHARS:
         output = "...(truncated)...\n" + output[-_MAX_OUTPUT_CHARS:]
     result = CommandResult(proc.returncode == 0, proc.returncode or 0, output, round(duration, 1), cmd_str)
