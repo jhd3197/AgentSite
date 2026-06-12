@@ -17,7 +17,7 @@ export default function useGeneration(projectId) {
   const [todos, setTodos] = useState([]);
   // Project mode — built workspace preview + build/checkpoint/verify status feed
   const [previewReady, setPreviewReady] = useState(null); // { url, buildHash }
-  const [buildEvents, setBuildEvents] = useState([]); // { kind: "build"|"checkpoint"|"verify", ... }
+  const [buildEvents, setBuildEvents] = useState([]); // { kind: "build"|"checkpoint"|"verify"|"triage"|"specialist", ... }
   const ws = useWebSocket(projectId);
   const versionRefreshRef = useRef(null);
   const projectRefreshRef = useRef(null);
@@ -182,6 +182,57 @@ export default function useGeneration(projectId) {
           }
           // verify_report without a matching verify_started — append standalone
           return [...next, { kind: "verify", route_count: finished.routes.length, ...finished }];
+        });
+      }),
+      // Project mode — triage decision scoping a follow-up build (fires before pipeline_plan).
+      ws.on("triage_decision", (msg) => {
+        setBuildEvents((prev) => [
+          ...prev,
+          {
+            kind: "triage",
+            bucket: msg.data?.bucket || "full",
+            needs_pm: !!msg.data?.needs_pm,
+            needs_designer: !!msg.data?.needs_designer,
+            reason: msg.data?.reason || "",
+          },
+        ]);
+      }),
+      // Project mode — specialist passes delegated by the developer (copywriter, seo, ...).
+      ws.on("specialist_start", (msg) => {
+        setBuildEvents((prev) => [
+          ...prev,
+          {
+            kind: "specialist",
+            specialist: msg.data?.specialist || "specialist",
+            task: msg.data?.task || "",
+            status: "running",
+          },
+        ]);
+      }),
+      ws.on("specialist_complete", (msg) => {
+        const d = msg.data || {};
+        const finished = {
+          status: d.ok ? "ok" : "failed",
+          duration_s: d.duration_s ?? null,
+          summary: d.summary || "",
+        };
+        setBuildEvents((prev) => {
+          const next = [...prev];
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (
+              next[i].kind === "specialist" &&
+              next[i].status === "running" &&
+              next[i].specialist === d.specialist
+            ) {
+              next[i] = { ...next[i], ...finished };
+              return next;
+            }
+          }
+          // specialist_complete without a matching specialist_start — append standalone
+          return [
+            ...next,
+            { kind: "specialist", specialist: d.specialist || "specialist", task: "", ...finished },
+          ];
         });
       }),
       ws.on("pipeline_plan", (msg) => {

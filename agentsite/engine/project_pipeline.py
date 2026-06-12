@@ -39,9 +39,11 @@ from ..models import (
     ReviewFeedback,
     SitePlan,
     StyleSpec,
+    TriageDecision,
     WSEvent,
 )
 from ..templates import find_template, read_template_doc
+from . import triage as triage_mod
 from . import verifier
 from .project_manager import ProjectManager
 from .tokens import render_tokens_css
@@ -332,14 +334,46 @@ class ProjectGenerationPipeline:
                     "files": files,
                 })
 
-            # -- pipeline plan for the frontend -------------------------
-            run_designer = version_number == 1
             has_direction = (
                 discovery_brief is not None
                 and discovery_brief.brand_mode == "pick_direction"
                 and bool(discovery_brief.direction_id)
             )
-            planned_agents = ["pm"] + (["designer"] if (run_designer and not has_direction) else []) + ["developer", "reviewer"]
+
+            # -- Phase E: triage follow-up requests ----------------------
+            existing_plan_text = (
+                ws.read_file(".agentsite/site-plan.json")
+                or self._pm.read_guide(project.id, "site-plan.json")
+                or ""
+            )
+            decision = TriageDecision(
+                bucket="full",
+                needs_pm=True,
+                needs_designer=(version_number == 1),
+                reason="first build" if version_number == 1 else "triage disabled",
+            )
+            if settings.triage_enabled and version_number > 1 and existing_plan_text:
+                triage_model = _agent_model("triage", model, self._agent_configs)
+                decision = await triage_mod.triage_request(
+                    page_prompt,
+                    model=triage_model,
+                    site_plan_text=existing_plan_text,
+                    file_tree=ws.file_tree(),
+                    version_number=version_number,
+                )
+                await self._emit("triage_decision", data=decision.model_dump())
+
+            run_pm = decision.needs_pm or not existing_plan_text
+            run_designer = (version_number == 1 or decision.needs_designer) and not has_direction
+            skip_review = decision.bucket == "tweak"
+
+            # -- pipeline plan for the frontend -------------------------
+            planned_agents = (
+                (["pm"] if run_pm else [])
+                + (["designer"] if run_designer else [])
+                + ["developer"]
+                + ([] if skip_review else ["reviewer"])
+            )
             try:
                 from ..agents.registry import AgentRegistry
 
@@ -360,6 +394,7 @@ class ProjectGenerationPipeline:
                 "agent_meta": agent_meta,
                 "parallel_groups": [],
                 "tech_stack": {"framework": template.id, "markup": "html", "styling": "css"},
+                "bucket": decision.bucket,
             })
 
             # -- discovery / memory prelude ------------------------------
@@ -401,50 +436,75 @@ class ProjectGenerationPipeline:
                     f"- uploads/{name}" for name in uploads
                 )
 
-            # -- Phase A: PM --------------------------------------------
-            from ..agents.pm import create_pm_agent_auto
-
-            pm_model = self._agent_models["pm"]
-            pm_agent = create_pm_agent_auto(pm_model)
-            _apply_agent_overrides(pm_agent, "pm", self._agent_configs)
-            self._inject_driver(pm_agent, pm_model)
-
-            template_note = (
-                f"## Workspace template (fixed)\nThis project uses the '{template.name}' "
-                f"template ({template.kind}). The tech stack is already decided — do NOT "
-                "choose tech_stack or required_agents. Plan only: pages, sections, and titles."
-            )
-            prelude = [p for p in (memory_block, discovery_brief_text, uploads_listing, template_note) if p]
-            pm_prompt = "\n\n---\n\n".join(prelude) + f"\n\n---\n\nUser brief:\n{page_prompt}"
-
-            pm_deps = {"project_dir": self._pm.project_dir(project.id)}
-            pm_result = await self._run_agent(
-                "pm", pm_agent, pm_prompt, pm_deps,
-                project_id=project.id, slug=slug, version=version_number, session_id=session_id,
-            )
-            self.site_plan_text = getattr(pm_result, "output_text", "") or ""
-
+            # -- Phase A: PM (skipped for tweaks — existing plan reused) --
             site_plan: SitePlan | None = None
-            try:
-                site_plan = SitePlan.model_validate(json.loads(clean_json_text(self.site_plan_text)))
-            except Exception:
-                from .extract import extract_structured
+            if run_pm:
+                from ..agents.pm import create_pm_agent_auto
 
-                site_plan = await extract_structured(
-                    SitePlan, self.site_plan_text, pm_model,
-                    instruction="Extract the site plan from this output:",
+                pm_model = self._agent_models["pm"]
+                pm_agent = create_pm_agent_auto(pm_model)
+                _apply_agent_overrides(pm_agent, "pm", self._agent_configs)
+                self._inject_driver(pm_agent, pm_model)
+
+                template_note = (
+                    f"## Workspace template (fixed)\nThis project uses the '{template.name}' "
+                    f"template ({template.kind}). The tech stack is already decided — do NOT "
+                    "choose tech_stack or required_agents. Plan only: pages, sections, and titles."
                 )
-            if site_plan is not None:
-                self.site_plan_text = site_plan.model_dump_json(indent=2)
+                plan_update_note = ""
+                if existing_plan_text and version_number > 1:
+                    plan_update_note = (
+                        "## Existing site plan — UPDATE it\nThe site already exists. "
+                        "Produce the updated FULL site plan incorporating the request: "
+                        "keep existing pages unless the request says otherwise.\n\n"
+                        + existing_plan_text[:6000]
+                    )
+                prelude = [p for p in (
+                    memory_block, discovery_brief_text, uploads_listing,
+                    template_note, plan_update_note,
+                ) if p]
+                pm_prompt = "\n\n---\n\n".join(prelude) + f"\n\n---\n\nUser brief:\n{page_prompt}"
+
+                pm_deps = {"project_dir": self._pm.project_dir(project.id)}
+                pm_result = await self._run_agent(
+                    "pm", pm_agent, pm_prompt, pm_deps,
+                    project_id=project.id, slug=slug, version=version_number, session_id=session_id,
+                )
+                self.site_plan_text = getattr(pm_result, "output_text", "") or ""
+
                 try:
-                    self._pm.write_guide(project.id, "site-plan.json", self.site_plan_text)
-                    ws.write_file(".agentsite/site-plan.json", self.site_plan_text)
+                    site_plan = SitePlan.model_validate(json.loads(clean_json_text(self.site_plan_text)))
                 except Exception:
-                    logger.debug("site-plan persistence skipped", exc_info=True)
+                    from .extract import extract_structured
+
+                    site_plan = await extract_structured(
+                        SitePlan, self.site_plan_text, pm_model,
+                        instruction="Extract the site plan from this output:",
+                    )
+                if site_plan is not None:
+                    self.site_plan_text = site_plan.model_dump_json(indent=2)
+                    try:
+                        self._pm.write_guide(project.id, "site-plan.json", self.site_plan_text)
+                        ws.write_file(".agentsite/site-plan.json", self.site_plan_text)
+                    except Exception:
+                        logger.debug("site-plan persistence skipped", exc_info=True)
+                    await self._emit("site_plan_ready", data={
+                        "site_plan": site_plan.model_dump(),
+                        "required_agents": planned_agents,
+                        "tech_stack": {"framework": template.id},
+                    })
+            else:
+                # Tweak path: the existing plan is the contract
+                self.site_plan_text = existing_plan_text
+                try:
+                    site_plan = SitePlan.model_validate(json.loads(clean_json_text(existing_plan_text)))
+                except Exception:
+                    site_plan = None
                 await self._emit("site_plan_ready", data={
-                    "site_plan": site_plan.model_dump(),
+                    "site_plan": site_plan.model_dump() if site_plan else {},
                     "required_agents": planned_agents,
                     "tech_stack": {"framework": template.id},
+                    "source": "existing",
                 })
 
             if cancel_event and cancel_event.is_set():
@@ -501,15 +561,19 @@ class ProjectGenerationPipeline:
                         "style_spec": self.style_spec_text, "parsed": True,
                     })
 
+            fresh_spec = spec is not None  # direction-synthesized or designer-produced
             if spec is None:
                 spec = project.style_spec or StyleSpec()
                 if not self.style_spec_text:
                     self.style_spec_text = spec.model_dump_json()
 
-            tokens_css = render_tokens_css(spec, template.tokens_format)
-            ws.write_file(template.tokens_path, tokens_css)
-            _on_file_written(template.tokens_path)
-            _checkpoint(f"v{version_number}: design tokens")
+            # Rewrite the tokens file only when the design actually changed
+            # (or on first build) — scoped follow-ups must not clobber it.
+            if fresh_spec or version_number == 1:
+                tokens_css = render_tokens_css(spec, template.tokens_format)
+                ws.write_file(template.tokens_path, tokens_css)
+                _on_file_written(template.tokens_path)
+                _checkpoint(f"v{version_number}: design tokens")
 
             if cancel_event and cancel_event.is_set():
                 return self._cancelled_result(slug, version_number)
@@ -548,6 +612,14 @@ class ProjectGenerationPipeline:
                 "asset_rel_prefix": "uploads/",
                 "build_dirty": True,
                 "last_build_ok": False,
+                # Phase E — specialist delegation
+                "specialist_models": {
+                    k: _agent_model(k, model, self._agent_configs)
+                    for k in ("copywriter", "seo", "accessibility", "animation")
+                },
+                "subagent_runs": [],
+                "_delegations_left": settings.specialist_max_delegations,
+                "provider_keys": self._provider_keys,
             }
 
             template_doc = read_template_doc(template.id)
@@ -557,6 +629,27 @@ class ProjectGenerationPipeline:
                 if template.kind == "node"
                 else "This template has no build step — files are served directly."
             )
+            if decision.bucket == "tweak":
+                task_text = (
+                    f"## Task — small scoped change\n{page_prompt}\n\n"
+                    "The site already exists and works. Make ONLY the edits this "
+                    "request needs (prefer edit_file); change nothing else. "
+                    f"{build_note}"
+                )
+            elif decision.bucket == "partial":
+                task_text = (
+                    f"## Task — incremental update\n{page_prompt}\n\n"
+                    "The site already exists. Implement this update against the "
+                    "current workspace: add or modify only what the request and the "
+                    "updated site plan require, keep everything else intact, and "
+                    f"keep navigation consistent across all pages. {build_note}"
+                )
+            else:
+                task_text = (
+                    f"## Task\n{page_prompt}\n\nBuild the COMPLETE site now: every page in "
+                    f"the site plan, with working navigation between them. {build_note}"
+                )
+
             initial_parts = [p for p in (
                 discovery_brief_text,
                 memory_block,
@@ -568,10 +661,7 @@ class ProjectGenerationPipeline:
                 ),
                 uploads_listing,
                 (f"## Conversation context\n{conversation_context}" if conversation_context else ""),
-                (
-                    f"## Task\n{page_prompt}\n\nBuild the COMPLETE site now: every page in "
-                    f"the site plan, with working navigation between them. {build_note}"
-                ),
+                task_text,
             ) if p]
             dev_prompt = "\n\n".join(initial_parts)
 
@@ -597,6 +687,10 @@ class ProjectGenerationPipeline:
                 await self._run_agent(
                     "developer", dev_agent, dev_prompt, dev_deps,
                     project_id=project.id, slug=slug, version=version_number, session_id=session_id,
+                )
+                self._drain_subagent_runs(
+                    dev_deps, project_id=project.id, slug=slug,
+                    version=version_number, session_id=session_id,
                 )
 
                 if cancel_event and cancel_event.is_set():
@@ -679,6 +773,12 @@ class ProjectGenerationPipeline:
                             if template.kind == "node" else ""
                         )
                         continue
+
+                # Tweaks skip the LLM review — verification already gated the
+                # result, and a scoped edit doesn't justify a full QA pass.
+                if skip_review:
+                    approved = True
+                    break
 
                 # -- review --
                 reviewer_model = self._agent_models["reviewer"]
@@ -774,6 +874,40 @@ class ProjectGenerationPipeline:
                     "the developer agent produced no files."
                 )
 
+            # Phase E — flagged multi-dimension critique panel + ratchet,
+            # reading the workspace (and the verify summary) instead of a
+            # mockup page dir. Off by default (settings.use_critique_panel).
+            if settings.use_critique_panel and approved and final_files:
+                try:
+                    from ..agents.critique import run_critique_panel
+                    from .ratchet import update_ratchet
+
+                    judge_model = self._agent_models.get("reviewer") or model
+                    panel_deps = {
+                        "version_dir": ws.workspace_dir,
+                        "project_dir": self._pm.project_dir(project.id),
+                    }
+                    context_note = (
+                        last_verify_report.render_summary()
+                        if last_verify_report is not None else ""
+                    )
+                    verdict, _debate = await run_critique_panel(
+                        judge_model, page_slug=slug, deps=panel_deps,
+                        context_note=context_note,
+                    )
+                    if verdict is not None:
+                        ratchet, accepted, regressed = update_ratchet(
+                            project.id, verdict, slug=slug, version=version_number,
+                        )
+                        await self._emit("critique_verdict", data={
+                            "verdict": verdict.model_dump(),
+                            "accepted": accepted,
+                            "regressed": regressed,
+                            "floors": ratchet.floors,
+                        })
+                except Exception:
+                    logger.warning("Critique panel failed (non-fatal)", exc_info=True)
+
             await self._emit("generation_complete", data={
                 "success": success,
                 "slug": slug,
@@ -783,6 +917,7 @@ class ProjectGenerationPipeline:
                 "usage": self._usage,
                 "approved": approved,
                 "verify_ok": verify_ok,
+                "bucket": decision.bucket,
             })
 
             return GroupResult(
@@ -817,6 +952,38 @@ class ProjectGenerationPipeline:
                     _os.environ["CACHIBOT_API_KEY"] = _prev_cachibot_key
                 else:
                     _os.environ.pop("CACHIBOT_API_KEY", None)
+
+    def _drain_subagent_runs(
+        self,
+        deps: dict[str, Any],
+        *,
+        project_id: str,
+        slug: str,
+        version: int,
+        session_id: str,
+    ) -> None:
+        """Fold specialist sub-agent runs (recorded by delegate_to_specialist)
+        into the pipeline's AgentRun records and usage totals."""
+        entries = deps.get("subagent_runs") or []
+        deps["subagent_runs"] = []
+        for entry in entries:
+            input_tokens = int(entry.get("input_tokens", 0) or 0)
+            output_tokens = int(entry.get("output_tokens", 0) or 0)
+            cost = float(entry.get("cost", 0.0) or 0.0)
+            self.agent_runs.append(AgentRun(
+                project_id=project_id,
+                page_slug=slug,
+                version=version,
+                agent_name=str(entry.get("agent", "specialist")),
+                status="completed",
+                session_id=session_id,
+                model=str(entry.get("model", "")),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost=cost,
+                completed_at=datetime.now(timezone.utc).isoformat(),
+            ))
+            self._add_usage(input_tokens, output_tokens, cost)
 
     def _cancelled_result(self, slug: str, version_number: int) -> GroupResult:
         return GroupResult(

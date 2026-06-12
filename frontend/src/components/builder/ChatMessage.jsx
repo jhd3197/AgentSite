@@ -262,7 +262,8 @@ function collectVerifyProblems(b) {
   return problems;
 }
 
-// Project mode — build / checkpoint / verify status lines streamed during generation.
+// Project mode — build / checkpoint / verify / triage / specialist status lines
+// streamed during generation.
 function BuildStatusLine({ event: b }) {
   if (b.kind === "verify") {
     if (b.status === "skipped") {
@@ -347,6 +348,59 @@ function BuildStatusLine({ event: b }) {
         <span className="truncate">{b.message}</span>
         {b.ref && (
           <span className="font-mono text-slate-600 shrink-0">{String(b.ref).slice(0, 7)}</span>
+        )}
+      </div>
+    );
+  }
+  if (b.kind === "triage") {
+    const skipped = [!b.needs_pm && "PM", !b.needs_designer && "designer"].filter(Boolean);
+    const label =
+      b.bucket === "tweak"
+        ? "Scoped build: quick tweak — developer only"
+        : b.bucket === "partial"
+          ? `Scoped build: partial update${skipped.length ? ` — skipping ${skipped.join(" & ")}` : ""}`
+          : "Full rebuild planned";
+    return (
+      <div
+        className="flex items-center gap-1.5 text-[11px] text-slate-500"
+        title={b.reason || undefined}
+      >
+        <Info size={11} className="shrink-0" />
+        <span className="truncate">{label}</span>
+      </div>
+    );
+  }
+  if (b.kind === "specialist") {
+    const failed = b.status === "failed";
+    return (
+      <div>
+        <div className={`flex items-center gap-1.5 text-[11px] ${failed ? "text-red-400" : "text-slate-400"}`}>
+          {b.status === "running" && (
+            <SpinnerGap className="animate-spin text-brand-400 shrink-0" size={11} />
+          )}
+          {b.status === "ok" && (
+            <CheckCircle className="text-emerald-400 shrink-0" weight="fill" size={11} />
+          )}
+          {failed && (
+            <WarningCircle className="text-red-400 shrink-0" weight="fill" size={11} />
+          )}
+          {b.status === "running" && (
+            <span className="truncate">
+              {b.specialist} working{b.task ? `: ${b.task}` : ""}…
+            </span>
+          )}
+          {b.status === "ok" && <span className="truncate">{b.specialist} done</span>}
+          {failed && <span className="truncate">{b.specialist} failed — continuing</span>}
+          {b.status !== "running" && b.duration_s != null && (
+            <span className="ml-auto text-slate-500 tabular-nums shrink-0">
+              {formatDuration(b.duration_s)}
+            </span>
+          )}
+        </div>
+        {b.status !== "running" && b.summary && (
+          <div className="mt-0.5 text-[10px] text-slate-500 truncate" title={b.summary}>
+            {b.summary}
+          </div>
         )}
       </div>
     );

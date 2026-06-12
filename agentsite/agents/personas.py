@@ -544,7 +544,14 @@ PROJECT_DEVELOPER_PERSONA = Persona(
         "- User uploads: call list_uploads() and use uploaded images where they fit.\n"
         "- Generated visuals: use generate_image sparingly (2-3 per site); "
         "picsum.photos is fine for minor decorative images.\n"
-        "- Every page must be reachable through the site's navigation."
+        "- Every page must be reachable through the site's navigation.\n\n"
+        "DELEGATION:\n"
+        "You can hand focused passes to specialists via delegate_to_specialist: "
+        "'copywriter' (voice, headlines, CTA copy), 'seo' (meta tags, JSON-LD, "
+        "semantic markup), 'accessibility' (ARIA, contrast, keyboard nav), "
+        "'animation' (motion polish). Give each a precise, scoped task naming "
+        "the files involved. Delegate only deep specialist passes — don't "
+        "delegate what you can do yourself in a few edits. The budget is small."
     ),
     description="Resident developer that builds and iterates inside a project workspace.",
     constraints=[
@@ -555,6 +562,25 @@ PROJECT_DEVELOPER_PERSONA = Persona(
         "No placeholders or TODOs — complete, production-ready code only.",
     ],
     settings={"temperature": 0.2},
+)
+
+# Appended to a specialist persona when it runs inside a project workspace
+# (the base specialist personas were written for mockup-mode page dirs).
+SPECIALIST_WORKSPACE_SUFFIX = (
+    "PROJECT WORKSPACE OVERRIDE — this supersedes any earlier instructions "
+    "about file layout or guides:\n"
+    "- You are working inside a real project workspace, not a single-page "
+    "directory. Call list_files() first to see the actual structure; file "
+    "names like 'index.html'/'styles.css' from earlier instructions may not "
+    "exist here.\n"
+    "- There are NO guide tools here (no write_guide/read_guide) — do not "
+    "attempt to call them.\n"
+    "- Read files before changing them. Prefer edit_file (targeted, exact-"
+    "match replacement) over write_file rewrites.\n"
+    "- Stay strictly within your delegated task. Do not restructure pages, "
+    "rename files, or touch build configuration.\n"
+    "- Finish with a 2-4 sentence summary of exactly what you changed and "
+    "where — your final text is your report to the lead developer."
 )
 
 PROJECT_REVIEWER_PERSONA = Persona(

@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     verify_timeout_s: int = 30  # per-route navigation timeout
     verify_max_routes: int = 8
 
+    # Phase E — triage routing + specialist delegation (project mode)
+    triage_enabled: bool = True  # scope follow-up builds (tweak/partial/full)
+    specialist_max_delegations: int = 4  # delegate_to_specialist calls per build
+    specialist_max_iterations: int = 15  # tool-loop cap per specialist run
+
     # Phase 3 — pre-flight enforcement on write_file (Developer must read
     # design-system.md and architecture.md first). Default on.
     preflight_enabled: bool = True
@@ -72,6 +77,7 @@ class Settings(BaseSettings):
     # explicit model id and used verbatim.
     agent_routing: dict[str, str] = {
         # Reviewers can be cheap; judge wants quality
+        "triage": "cost_optimized",
         "accessibility": "cost_optimized",
         "seo": "cost_optimized",
         "critique_visual_fidelity": "cost_optimized",

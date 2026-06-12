@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from pathlib import Path
 
-from prompture import RunContext, ToolRegistry
+from prompture import AsyncAgent, RunContext, ToolRegistry
 
 from .tools import generate_image
 
@@ -283,8 +284,142 @@ def list_uploads(ctx: RunContext) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Specialist delegation (Phase E)
+# ---------------------------------------------------------------------------
+
+
+def _specialist_roster() -> dict:
+    from .personas import (
+        ACCESSIBILITY_PERSONA,
+        ANIMATION_PERSONA,
+        COPYWRITER_PERSONA,
+        SEO_PERSONA,
+    )
+
+    return {
+        "copywriter": COPYWRITER_PERSONA,
+        "seo": SEO_PERSONA,
+        "accessibility": ACCESSIBILITY_PERSONA,
+        "animation": ANIMATION_PERSONA,
+    }
+
+
+def _specialist_system(persona) -> str:
+    from .personas import SPECIALIST_WORKSPACE_SUFFIX
+
+    parts = [persona.system_prompt]
+    constraints = getattr(persona, "constraints", None) or []
+    if constraints:
+        parts.append("Constraints:\n" + "\n".join(f"- {c}" for c in constraints))
+    parts.append(SPECIALIST_WORKSPACE_SUFFIX)
+    return "\n\n".join(parts)
+
+
+async def delegate_to_specialist(ctx: RunContext, specialist: str, task: str) -> str:
+    """Delegate a focused pass to a specialist sub-agent working in this workspace.
+
+    Specialists: 'copywriter' (voice, headlines, CTAs), 'seo' (meta tags,
+    JSON-LD, semantic markup), 'accessibility' (ARIA, contrast, keyboard nav),
+    'animation' (transitions, scroll motion). Give a precise, scoped task that
+    names the files involved. Returns the specialist's summary of changes.
+
+    Args:
+        specialist: One of 'copywriter', 'seo', 'accessibility', 'animation'.
+        task: Precise description of the focused pass to perform.
+    """
+    roster = _specialist_roster()
+    if specialist not in roster:
+        return f"Error: unknown specialist '{specialist}'. Available: {sorted(roster)}"
+
+    left = ctx.deps.get("_delegations_left", 0)
+    if left <= 0:
+        return (
+            "Delegation budget exhausted — make the remaining changes yourself "
+            "with targeted edits."
+        )
+    ctx.deps["_delegations_left"] = left - 1
+
+    model = (ctx.deps.get("specialist_models") or {}).get(specialist)
+    if not model:
+        return "Error: no model configured for specialists in this run."
+
+    from ..config import settings
+
+    agent = AsyncAgent(
+        model=model,
+        tools=specialist_workspace_tools,
+        system_prompt=_specialist_system(roster[specialist]),
+        max_iterations=settings.specialist_max_iterations,
+        options={"max_tokens": 16384, "timeout": 600},
+        name=f"agentsite_{specialist}",
+    )
+    provider_keys = ctx.deps.get("provider_keys")
+    if provider_keys:
+        try:
+            from ..engine.driver_factory import resolve_driver_for_model
+
+            driver = resolve_driver_for_model(model, provider_keys)
+            if driver is not None:
+                agent.driver = driver
+        except Exception:
+            logger.debug("Specialist driver injection skipped", exc_info=True)
+
+    emit = ctx.deps.get("emit_event")
+    if emit:
+        await emit("specialist_start", {"specialist": specialist, "task": task[:120]})
+
+    start = time.monotonic()
+    try:
+        result = await agent.run(task, deps=ctx.deps)
+    except Exception as exc:
+        logger.warning("Specialist '%s' failed: %s", specialist, exc)
+        if emit:
+            await emit("specialist_complete", {
+                "specialist": specialist, "ok": False,
+                "duration_s": round(time.monotonic() - start, 1),
+                "summary": f"failed: {str(exc)[:200]}",
+            })
+        return f"Specialist '{specialist}' failed: {str(exc)[:300]}. Handle the task yourself."
+
+    duration_s = round(time.monotonic() - start, 1)
+    summary = (getattr(result, "output_text", "") or "").strip() or "(no summary returned)"
+
+    usage = getattr(result, "usage", None) or getattr(result, "run_usage", None) or {}
+    if not isinstance(usage, dict):
+        usage = {}
+    input_tokens = int(usage.get("input_tokens", 0) or usage.get("prompt_tokens", 0) or 0)
+    output_tokens = int(usage.get("output_tokens", 0) or usage.get("completion_tokens", 0) or 0)
+    cost = float(usage.get("cost", 0.0) or 0.0)
+    ctx.deps.setdefault("subagent_runs", []).append({
+        "agent": specialist,
+        "model": model,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cost": cost,
+        "duration_s": duration_s,
+    })
+
+    if emit:
+        await emit("specialist_complete", {
+            "specialist": specialist, "ok": True,
+            "duration_s": duration_s,
+            "summary": summary[:300],
+        })
+    return f"[{specialist} done in {duration_s}s]\n{summary[:2000]}"
+
+
+# ---------------------------------------------------------------------------
 # Registries
 # ---------------------------------------------------------------------------
+
+# Specialists: file tools only — no run_command, no delegation (no recursion)
+specialist_workspace_tools = ToolRegistry()
+specialist_workspace_tools.register(list_files)
+specialist_workspace_tools.register(read_file)
+specialist_workspace_tools.register(write_file)
+specialist_workspace_tools.register(edit_file)
+specialist_workspace_tools.register(search_files)
+specialist_workspace_tools.register(list_uploads)
 
 dev_workspace_tools = ToolRegistry()
 dev_workspace_tools.register(list_files)
@@ -295,6 +430,7 @@ dev_workspace_tools.register(search_files)
 dev_workspace_tools.register(run_command)
 dev_workspace_tools.register(list_uploads)
 dev_workspace_tools.register(generate_image)
+dev_workspace_tools.register(delegate_to_specialist)
 
 reviewer_workspace_tools = ToolRegistry()
 reviewer_workspace_tools.register(list_files)

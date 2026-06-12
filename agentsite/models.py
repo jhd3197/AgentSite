@@ -236,6 +236,33 @@ class PageOutputSummary(BaseModel):
     notes: str = Field(default="", description="Brief developer notes about the implementation")
 
 
+class TriageDecision(BaseModel):
+    """Phase E — classification of a follow-up request (project mode).
+
+    Decides which agents a generation actually needs instead of always
+    running the full PM -> Designer -> Developer -> Reviewer line.
+    """
+
+    bucket: str = Field(
+        default="full",
+        description=(
+            "'tweak' (small scoped change: copy/style/minor layout — developer only), "
+            "'partial' (new pages or section rework within the existing brand — "
+            "PM updates the plan, no designer), or "
+            "'full' (new site / redesign / rebrand — everything runs)."
+        ),
+    )
+    needs_pm: bool = Field(
+        default=True,
+        description="True when the site plan must be created or updated (structure changes).",
+    )
+    needs_designer: bool = Field(
+        default=False,
+        description="True only for visual rebrands — the design tokens get regenerated.",
+    )
+    reason: str = Field(default="", description="One short sentence explaining the choice.")
+
+
 class ReviewFeedback(BaseModel):
     """Output of the Reviewer Agent — QA feedback."""
 
@@ -490,7 +517,8 @@ class WSEvent(BaseModel):
             "todo_update, steer_received, steer_applied, "
             "memory_extracted, refusal_detected, "
             "workspace_scaffolded, preview_ready, build_started, "
-            "build_finished, checkpoint_created, verify_started, verify_report"
+            "build_finished, checkpoint_created, verify_started, verify_report, "
+            "triage_decision, specialist_start, specialist_complete"
         )
     )
     agent: str = Field(default="", description="Agent name")
