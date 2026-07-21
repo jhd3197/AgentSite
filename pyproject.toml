@@ -31,6 +31,7 @@ dependencies = [
 test = ["pytest>=7.0", "pytest-asyncio>=0.23.0", "httpx>=0.25.0"]
 dev = ["pytest>=7.0", "pytest-asyncio>=0.23.0", "httpx>=0.25.0", "ruff>=0.8.0"]
 scss = ["libsass>=0.23"]
+verify = ["playwright>=1.45"]
 
 [project.scripts]
 agentsite = "agentsite.cli:cli"
@@ -49,6 +50,7 @@ agentsite = [
     "design_systems/**/*.css",
     "design_systems/**/*.html",
     "prompt_templates/**/*.json",
+    "templates/**/*",
     "THIRD_PARTY_NOTICES.md",
 ]
 

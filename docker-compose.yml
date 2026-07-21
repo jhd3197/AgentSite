@@ -3,8 +3,12 @@ services:
     build: .
     ports:
       - "6391:6391"
+    # .env is optional (gitignored — copy .env.copy to create one). Compose
+    # hard-fails on a missing env_file, which breaks fresh clones and
+    # ServerKit/Coolify-style deploys straight from the repo.
     env_file:
-      - .env
+      - path: .env
+        required: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

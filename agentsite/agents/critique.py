@@ -213,6 +213,7 @@ async def run_critique_panel(
     page_slug: str,
     deps: dict[str, Any],
     callbacks: Any | None = None,
+    context_note: str = "",
 ) -> tuple[ReviewVerdict | None, DebateResult]:
     """Run the 4-dimension critique panel + judge, return parsed verdict."""
     reviewers = [
@@ -244,10 +245,13 @@ async def run_critique_panel(
     )
 
     group = AsyncDebateGroup(reviewers, config=config, callbacks=callbacks)
-    result = await group.run(
+    topic = (
         f"Review the generated '{page_slug}' page on your dimension. "
         "Use list_files + read_file to inspect the actual generated code first."
     )
+    if context_note:
+        topic += f"\n\nContext from automated checks:\n{context_note}"
+    result = await group.run(topic)
 
     verdict = parse_verdict(result.judge_verdict or "")
     if verdict is None and result.transcript:

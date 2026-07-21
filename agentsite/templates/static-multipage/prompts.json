@@ -1,0 +1,17 @@
+[
+  {
+    "id": "coffee-roastery",
+    "title": "Local coffee roastery",
+    "prompt": "Build a four-page site for Ember & Oak, a small-batch coffee roastery: Home, Our Roasts, Visit, and Contact. The home page needs a hero with the tagline \"Roasted slow, poured fast\", a three-card section featuring signature roasts, and a short founders' story section. Use a warm, earthy palette (deep brown, cream, burnt orange) and keep the header, nav, and footer identical across all pages."
+  },
+  {
+    "id": "law-firm",
+    "title": "Professional services firm",
+    "prompt": "Create a website for Hartley & Voss, a two-partner law firm, with Home, Practice Areas, Attorneys, and Contact pages. Present six practice areas as cards with short plain-English descriptions, and give each partner a profile section with photo placeholder, bio, and bar admissions. Keep the look trustworthy and conservative — navy, white, and a gold accent — with a prominent \"Request a consultation\" button in the header of every page."
+  },
+  {
+    "id": "photo-portfolio",
+    "title": "Personal portfolio",
+    "prompt": "Build a portfolio for Maya Rivera, a freelance product photographer: Home, Work, About, and Contact. The Work page should be a responsive image grid with project titles revealed on hover, and the About page needs a short bio plus a client list. Keep it minimal and gallery-like: generous white space, large hero type, and a single accent color."
+  }
+]

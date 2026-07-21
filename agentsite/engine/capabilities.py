@@ -43,30 +43,43 @@ def get_capabilities(model: str) -> ModelCapabilities:
         ModelCapabilities with detected or default values.
     """
     provider, model_name = _parse_model_string(model)
+    inferred = _infer_capabilities(provider, model_name)
 
-    # Try Prompture's capability detection first
+    # Prompture's capabilities KB first; pattern inference fills the gaps
+    # (KB fields are None when models.dev doesn't report them).
     try:
-        from prompture.model_rates import get_model_capabilities
+        from prompture.infra.model_rates import get_model_capabilities
 
         caps = get_model_capabilities(provider, model_name)
         if caps:
             return ModelCapabilities(
-                supports_tools=caps.supports_tool_use if caps.supports_tool_use is not None else True,
-                supports_structured_output=(
-                    caps.supports_structured_output if caps.supports_structured_output is not None else True
+                supports_tools=(
+                    caps.supports_tool_use
+                    if caps.supports_tool_use is not None
+                    else inferred.supports_tools
                 ),
-                supports_vision=caps.supports_vision if caps.supports_vision is not None else False,
-                is_reasoning=caps.is_reasoning if caps.is_reasoning is not None else False,
+                supports_structured_output=(
+                    caps.supports_structured_output
+                    if caps.supports_structured_output is not None
+                    else inferred.supports_structured_output
+                ),
+                supports_vision=(
+                    caps.supports_vision
+                    if caps.supports_vision is not None
+                    else inferred.supports_vision
+                ),
+                is_reasoning=(
+                    caps.is_reasoning if caps.is_reasoning is not None else inferred.is_reasoning
+                ),
                 context_window=caps.context_window,
                 max_output_tokens=caps.max_output_tokens,
             )
     except ImportError:
-        logger.debug("prompture.model_rates.get_model_capabilities not available")
+        logger.debug("prompture.infra.model_rates.get_model_capabilities not available")
     except Exception as e:
         logger.debug("Failed to get capabilities from Prompture: %s", e)
 
-    # Fallback: infer from known patterns
-    return _infer_capabilities(provider, model_name)
+    return inferred
 
 
 def _infer_capabilities(provider: str, model_name: str) -> ModelCapabilities:
@@ -85,8 +98,11 @@ def _infer_capabilities(provider: str, model_name: str) -> ModelCapabilities:
     no_structured_patterns = ("o1-preview", "o1-mini")
     lacks_structured = any(p in model_lower for p in no_structured_patterns)
 
-    # Vision models
-    vision_patterns = ("vision", "4o", "gpt-4-turbo", "claude-3", "gemini")
+    # Vision models (all Claude 3+ family models accept images)
+    vision_patterns = (
+        "vision", "4o", "gpt-4-turbo", "gemini",
+        "claude-3", "claude-sonnet", "claude-opus", "claude-haiku",
+    )
     has_vision = any(p in model_lower for p in vision_patterns)
 
     # Provider-specific defaults
@@ -120,6 +136,11 @@ def _infer_capabilities(provider: str, model_name: str) -> ModelCapabilities:
 def supports_tools(model: str) -> bool:
     """Check if model supports tool/function calling."""
     return get_capabilities(model).supports_tools
+
+
+def supports_vision(model: str) -> bool:
+    """Check if model supports image inputs."""
+    return get_capabilities(model).supports_vision
 
 
 def supports_structured_output(model: str) -> bool:

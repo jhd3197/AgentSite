@@ -75,7 +75,8 @@ export default function ProjectCard({ project, onDelete }) {
     >
       <div className="h-40 bg-slate-800 relative overflow-hidden group-hover:opacity-90 transition-opacity">
         <BrowserMockup />
-        <div className="absolute top-3 right-3">
+        <div className="absolute top-3 right-3 flex items-center gap-1.5">
+          {project.mode === "project" && <Badge status="active">Project</Badge>}
           <Badge status={status}>{status}</Badge>
         </div>
       </div>

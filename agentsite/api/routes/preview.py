@@ -69,6 +69,97 @@ async def preview_asset(project_id: str, filename: str, pm=Depends(get_pm)):
     return FileResponse(target, media_type=media_type)
 
 
+# -- Project-mode workspace serving (must register before /{slug} routes) --
+
+_WORKSPACE_HIDDEN = {".git", ".agentsite", "node_modules"}
+
+
+def _workspace_serve_root(pm, project_id: str):
+    """Resolve (serve_root, template, built) for a project workspace.
+
+    Node templates serve the build output dir once it exists ("built");
+    static templates serve the workspace root directly (always "built").
+    """
+    from ...engine.workspace import WorkspaceManager
+
+    ws = WorkspaceManager(pm.project_dir(project_id))
+    template = ws.template()
+    if template is not None and template.kind == "node":
+        out = ws.workspace_dir / (template.output_dir or "dist")
+        if out.exists():
+            return out, template, True
+        return ws.workspace_dir, template, False
+    return ws.workspace_dir, template, True
+
+
+_NOT_BUILT_HTML = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Not built yet</title>
+<style>body{font-family:system-ui;display:grid;place-items:center;height:100vh;margin:0;
+background:#0b0d12;color:#9aa4b2}div{text-align:center}h1{font-size:18px;color:#e6e9ee}</style>
+</head><body><div><h1>Project not built yet</h1>
+<p>Run a generation — the preview appears after the first successful build.</p></div></body></html>"""
+
+
+@router.get("/{project_id}/verify/{path:path}")
+async def preview_verify_artifact(project_id: str, path: str, pm=Depends(get_pm)):
+    """Serve verification artifacts (screenshots) from .agentsite/verify/."""
+    from ...engine.workspace import WorkspaceManager
+
+    verify_root = WorkspaceManager(pm.project_dir(project_id)).workspace_dir / ".agentsite" / "verify"
+    target = verify_root / path
+    try:
+        target.resolve().relative_to(verify_root.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied") from None
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    media_type = _MIME_TYPES.get(target.suffix.lower(), "application/octet-stream")
+    return FileResponse(target, media_type=media_type)
+
+
+@router.get("/{project_id}/app")
+async def preview_app_redirect(project_id: str):
+    """Redirect to the trailing-slash form so relative asset paths resolve."""
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse(url=f"/preview/{project_id}/app/")
+
+
+@router.get("/{project_id}/app/{path:path}")
+async def preview_app_file(project_id: str, path: str, pm=Depends(get_pm)):
+    """Serve a file from the project workspace (built output when present)."""
+    root, template, built = _workspace_serve_root(pm, project_id)
+    if not root.exists():
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    rel = path or (template.entry if template else "index.html")
+    if rel.endswith("/"):
+        rel += "index.html"
+
+    # Unbuilt node project: the source index.html references JSX modules
+    # the browser can't run — show a placeholder until the first build.
+    if not built:
+        if not path or rel.endswith((".html", ".htm")):
+            return Response(content=_NOT_BUILT_HTML, media_type="text/html")
+        raise HTTPException(status_code=404, detail="Project not built yet")
+
+    target = root / rel
+    try:
+        target.resolve().relative_to(root.resolve())
+    except ValueError:
+        raise HTTPException(status_code=403, detail="Access denied") from None
+    if any(part in _WORKSPACE_HIDDEN for part in Path(rel).parts):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if not target.exists() or not target.is_file():
+        raise HTTPException(status_code=404, detail=f"File not found: {rel}")
+
+    suffix = target.suffix.lower()
+    media_type = _MIME_TYPES.get(suffix, "application/octet-stream")
+    headers = {"Cache-Control": "no-store"} if suffix in (".html", ".htm") else None
+    return FileResponse(target, media_type=media_type, headers=headers)
+
+
 @router.get("/{project_id}/{slug}")
 async def preview_page_latest(
     project_id: str,

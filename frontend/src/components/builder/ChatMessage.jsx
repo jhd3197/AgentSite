@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { Sparkle, WarningCircle, SpinnerGap, CheckCircle, CaretDown, CaretRight, Timer, Lightning, Terminal, Copy, ArrowsOut, X, Export, Brain, ArrowCounterClockwise, Wrench } from "@phosphor-icons/react";
+import { Sparkle, WarningCircle, SpinnerGap, CheckCircle, CaretDown, CaretRight, Timer, Lightning, Terminal, Copy, ArrowsOut, X, Export, Brain, ArrowCounterClockwise, Wrench, GitCommit, Info } from "@phosphor-icons/react";
+import { API_BASE } from "../../api/client";
 
 function formatDuration(seconds) {
   if (seconds < 60) return `${Math.round(seconds * 10) / 10}s`;
@@ -236,10 +237,209 @@ function buildAgentLogs(agents) {
   return lines.join("\n");
 }
 
+// Verification report URLs are root-relative (/preview/...) — same base as assets.js helpers.
+function screenshotUrl(u) {
+  return u && !String(u).startsWith("http") ? `${API_BASE}${u}` : u;
+}
+
+function problemText(v) {
+  if (typeof v === "string") return v;
+  if (v && typeof v === "object") return v.message || v.text || v.url || JSON.stringify(v);
+  return String(v);
+}
+
+// Flatten a verify_report's route results into displayable problem lines:
+// console errors first, then failed requests, then missing pages.
+function collectVerifyProblems(b) {
+  const problems = [];
+  for (const r of b.routes || []) {
+    for (const e of r.console_errors || []) problems.push(`${r.route}: ${problemText(e)}`);
+  }
+  for (const r of b.routes || []) {
+    for (const f of r.failed_requests || []) problems.push(`${r.route}: failed request — ${problemText(f)}`);
+  }
+  for (const p of b.missing_pages || []) problems.push(`missing page: ${p}`);
+  return problems;
+}
+
+// Project mode — build / checkpoint / verify / triage / specialist status lines
+// streamed during generation.
+function BuildStatusLine({ event: b }) {
+  if (b.kind === "verify") {
+    if (b.status === "skipped") {
+      return (
+        <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+          <Info size={11} className="shrink-0" />
+          <span className="truncate">
+            verification skipped{b.skip_reason ? ` — ${b.skip_reason}` : ""}
+          </span>
+        </div>
+      );
+    }
+    const failed = b.status === "failed";
+    const problems = failed ? collectVerifyProblems(b) : [];
+    const shots = b.screenshot_urls || [];
+    return (
+      <div>
+        <div className={`flex items-center gap-1.5 text-[11px] ${failed ? "text-red-400" : "text-slate-400"}`}>
+          {b.status === "running" && (
+            <SpinnerGap className="animate-spin text-brand-400 shrink-0" size={11} />
+          )}
+          {b.status === "ok" && (
+            <CheckCircle className="text-emerald-400 shrink-0" weight="fill" size={11} />
+          )}
+          {failed && (
+            <WarningCircle className="text-red-400 shrink-0" weight="fill" size={11} />
+          )}
+          {b.status === "running" && (
+            <span className="truncate">
+              Verifying {b.route_count || 0} route{(b.route_count || 0) === 1 ? "" : "s"}…
+            </span>
+          )}
+          {b.status === "ok" && (
+            <span className="truncate">{b.summary || "verification passed"}</span>
+          )}
+          {failed && <span className="truncate">verification failed — retrying</span>}
+          {b.status !== "running" && b.duration_s != null && (
+            <span className="ml-auto text-slate-500 tabular-nums shrink-0">
+              {formatDuration(b.duration_s)}
+            </span>
+          )}
+        </div>
+        {failed && problems.length > 0 && (
+          <pre className="mt-1 text-[10px] text-red-300/70 whitespace-pre-wrap font-mono max-h-24 overflow-y-auto bg-red-950/30 rounded-lg p-2 border border-red-500/10">
+            {problems.slice(0, 3).join("\n")}
+            {problems.length > 3 ? `\n+${problems.length - 3} more` : ""}
+          </pre>
+        )}
+        {shots.length > 0 && (
+          <div className="mt-1.5 flex items-center gap-1.5 overflow-x-auto">
+            {shots.slice(0, 6).map((url, i) => (
+              <a
+                key={i}
+                href={screenshotUrl(url)}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0"
+                title={String(url).split("/").pop()}
+              >
+                <img
+                  src={screenshotUrl(url)}
+                  alt={String(url).split("/").pop() || "screenshot"}
+                  loading="lazy"
+                  className="h-16 w-24 rounded border border-slate-700 object-cover object-top hover:border-brand-400 transition-colors"
+                />
+              </a>
+            ))}
+            {shots.length > 6 && (
+              <span className="shrink-0 text-[10px] text-slate-500 px-1">
+                +{shots.length - 6}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (b.kind === "checkpoint") {
+    return (
+      <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+        <GitCommit size={11} className="shrink-0" />
+        <span className="truncate">{b.message}</span>
+        {b.ref && (
+          <span className="font-mono text-slate-600 shrink-0">{String(b.ref).slice(0, 7)}</span>
+        )}
+      </div>
+    );
+  }
+  if (b.kind === "triage") {
+    const skipped = [!b.needs_pm && "PM", !b.needs_designer && "designer"].filter(Boolean);
+    const label =
+      b.bucket === "tweak"
+        ? "Scoped build: quick tweak — developer only"
+        : b.bucket === "partial"
+          ? `Scoped build: partial update${skipped.length ? ` — skipping ${skipped.join(" & ")}` : ""}`
+          : "Full rebuild planned";
+    return (
+      <div
+        className="flex items-center gap-1.5 text-[11px] text-slate-500"
+        title={b.reason || undefined}
+      >
+        <Info size={11} className="shrink-0" />
+        <span className="truncate">{label}</span>
+      </div>
+    );
+  }
+  if (b.kind === "specialist") {
+    const failed = b.status === "failed";
+    return (
+      <div>
+        <div className={`flex items-center gap-1.5 text-[11px] ${failed ? "text-red-400" : "text-slate-400"}`}>
+          {b.status === "running" && (
+            <SpinnerGap className="animate-spin text-brand-400 shrink-0" size={11} />
+          )}
+          {b.status === "ok" && (
+            <CheckCircle className="text-emerald-400 shrink-0" weight="fill" size={11} />
+          )}
+          {failed && (
+            <WarningCircle className="text-red-400 shrink-0" weight="fill" size={11} />
+          )}
+          {b.status === "running" && (
+            <span className="truncate">
+              {b.specialist} working{b.task ? `: ${b.task}` : ""}…
+            </span>
+          )}
+          {b.status === "ok" && <span className="truncate">{b.specialist} done</span>}
+          {failed && <span className="truncate">{b.specialist} failed — continuing</span>}
+          {b.status !== "running" && b.duration_s != null && (
+            <span className="ml-auto text-slate-500 tabular-nums shrink-0">
+              {formatDuration(b.duration_s)}
+            </span>
+          )}
+        </div>
+        {b.status !== "running" && b.summary && (
+          <div className="mt-0.5 text-[10px] text-slate-500 truncate" title={b.summary}>
+            {b.summary}
+          </div>
+        )}
+      </div>
+    );
+  }
+  const failed = b.status === "failed";
+  return (
+    <div>
+      <div className={`flex items-center gap-1.5 text-[11px] ${failed ? "text-red-400" : "text-slate-400"}`}>
+        {b.status === "running" && (
+          <SpinnerGap className="animate-spin text-brand-400 shrink-0" size={11} />
+        )}
+        {b.status === "ok" && (
+          <CheckCircle className="text-emerald-400 shrink-0" weight="fill" size={11} />
+        )}
+        {failed && (
+          <WarningCircle className="text-red-400 shrink-0" weight="fill" size={11} />
+        )}
+        <span className="font-mono truncate">{b.command || "build"}</span>
+        {b.status === "running" && <span className="text-slate-500 shrink-0">building…</span>}
+        {failed && <span className="shrink-0">build failed — retrying</span>}
+        {b.status !== "running" && b.duration_s != null && (
+          <span className="ml-auto text-slate-500 tabular-nums shrink-0">
+            {formatDuration(b.duration_s)}
+          </span>
+        )}
+      </div>
+      {failed && b.output_tail && (
+        <pre className="mt-1 text-[10px] text-red-300/70 whitespace-pre-wrap font-mono max-h-24 overflow-y-auto bg-red-950/30 rounded-lg p-2 border border-red-500/10">
+          {b.output_tail}
+        </pre>
+      )}
+    </div>
+  );
+}
+
 function AgentProgressMessage({ message }) {
   const [expanded, setExpanded] = useState(false);
   const [logsCopied, setLogsCopied] = useState(false);
-  const { agents = [], done } = message;
+  const { agents = [], done, builds = [] } = message;
 
   const current = agents.find((a) => a.status === "running");
   const lastCompleted = [...agents].reverse().find((a) => a.status === "complete");
@@ -273,6 +473,13 @@ function AgentProgressMessage({ message }) {
             <CaretRight className="text-slate-500 shrink-0" size={12} />
           )}
         </button>
+        {builds.length > 0 && (
+          <div className="mt-2 space-y-1 border-t border-slate-800 pt-2">
+            {builds.slice(-4).map((b, i) => (
+              <BuildStatusLine key={i} event={b} />
+            ))}
+          </div>
+        )}
         {expanded && (
           <div className="mt-3 space-y-2 border-t border-slate-800 pt-3">
             {agents.map((a) => (

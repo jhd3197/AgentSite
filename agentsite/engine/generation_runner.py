@@ -126,12 +126,39 @@ async def start_generation_task(
     if provider_keys:
         merged_provider_keys.update(provider_keys)
 
-    pipeline = GenerationPipeline(
-        pm,
-        on_event=on_event,
-        agent_configs=agent_configs,
-        provider_keys=merged_provider_keys or None,
-    )
+    project_mode = (getattr(project, "mode", "mockup") or "mockup") == "project"
+    if project_mode:
+        from ..engine.project_pipeline import ProjectGenerationPipeline
+
+        pipeline = ProjectGenerationPipeline(
+            pm,
+            on_event=on_event,
+            agent_configs=agent_configs,
+            provider_keys=merged_provider_keys or None,
+        )
+    else:
+        pipeline = GenerationPipeline(
+            pm,
+            on_event=on_event,
+            agent_configs=agent_configs,
+            provider_keys=merged_provider_keys or None,
+        )
+
+    def _collect_files() -> tuple[list[str], dict[str, str]]:
+        """Snapshot generated files for DB capture (mode-aware)."""
+        if project_mode:
+            from ..engine.workspace import WorkspaceManager
+
+            ws = WorkspaceManager(pm.project_dir(project_id))
+            content = ws.collect_files_content()
+            return ws.list_files(), content
+        file_list = pm.list_version_files(project_id, slug, version_number)
+        content = {}
+        for fpath in file_list:
+            c = pm.read_version_file(project_id, slug, version_number, fpath)
+            if c is not None:
+                content[fpath] = c
+        return file_list, content
 
     try:
         from prompture.exceptions import BudgetExceededError as _BudgetExceededError
@@ -198,12 +225,7 @@ async def start_generation_task(
                     else:
                         logger.warning("Failed to auto-save StyleSpec to project", exc_info=True)
 
-            file_list = pm.list_version_files(project.id, slug, version_number)
-            files_content: dict[str, str] = {}
-            for fpath in file_list:
-                content = pm.read_version_file(project.id, slug, version_number, fpath)
-                if content is not None:
-                    files_content[fpath] = content
+            file_list, files_content = _collect_files()
 
             version.status = "completed"
             version.usage = result.aggregate_usage
@@ -215,12 +237,7 @@ async def start_generation_task(
                 "Budget exceeded for project %s page %s: %s",
                 project_id, slug, budget_exc,
             )
-            file_list = pm.list_version_files(project.id, slug, version_number)
-            files_content: dict[str, str] = {}
-            for fpath in file_list:
-                content = pm.read_version_file(project.id, slug, version_number, fpath)
-                if content is not None:
-                    files_content[fpath] = content
+            file_list, files_content = _collect_files()
 
             version.status = "budget_exceeded"
             version.error = str(budget_exc)
@@ -263,17 +280,15 @@ async def start_generation_task(
             tb = tb_mod.format_exc()
             logger.exception("Generation failed for project %s page %s", project_id, slug)
 
-            file_list = pm.list_version_files(project.id, slug, version_number)
-            if file_list:
+            file_list, files_content = _collect_files()
+            # Mockup-only recovery: files on disk mean the build salvaged.
+            # In project mode the workspace always has scaffold files, so
+            # their presence proves nothing — keep the failure status.
+            if file_list and not project_mode:
                 logger.info(
                     "Pipeline failed but %d files exist on disk for project %s page %s v%d — marking completed",
                     len(file_list), project_id, slug, version_number,
                 )
-                files_content: dict[str, str] = {}
-                for fpath in file_list:
-                    content = pm.read_version_file(project.id, slug, version_number, fpath)
-                    if content is not None:
-                        files_content[fpath] = content
                 version.status = "completed"
                 version.files = files_content
                 version.completed_at = datetime.now(timezone.utc).isoformat()

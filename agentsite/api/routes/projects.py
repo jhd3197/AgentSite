@@ -18,6 +18,8 @@ class CreateProjectRequest(BaseModel):
     name: str = "Untitled Project"
     description: str = ""
     model: str = ""
+    mode: str = "mockup"  # "mockup" | "project"
+    template_id: str | None = None  # workspace template when mode == "project"
 
 
 class UpdateProjectRequest(BaseModel):
@@ -51,9 +53,44 @@ async def get_quality(project_id: str, repo=Depends(get_repo)):
 
 @router.post("", response_model=Project)
 async def create_project(req: CreateProjectRequest, repo=Depends(get_repo), pm=Depends(get_pm)):
-    project = Project(name=req.name, description=req.description, model=req.model, style_spec=StyleSpec())
+    if req.mode not in ("mockup", "project"):
+        raise HTTPException(status_code=400, detail="mode must be 'mockup' or 'project'")
+
+    template = None
+    if req.mode == "project":
+        from ...config import settings
+        from ...templates import find_template
+
+        template = find_template(req.template_id or settings.default_template)
+        if template is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown template '{req.template_id}'. See GET /api/templates.",
+            )
+
+    project = Project(
+        name=req.name,
+        description=req.description,
+        model=req.model,
+        style_spec=StyleSpec(),
+        mode=req.mode,
+        template_id=template.id if template else None,
+    )
     pm.create(project)
     await repo.create(project)
+
+    # Scaffold the workspace immediately so uploads land in it and the
+    # file tree exists before the first generation.
+    if template is not None:
+        from ...engine.workspace import WorkspaceManager
+
+        try:
+            WorkspaceManager(pm.project_dir(project.id)).scaffold(template)
+        except Exception as exc:
+            pm.delete(project.id)
+            await repo.delete(project.id)
+            raise HTTPException(status_code=500, detail=f"Workspace scaffold failed: {exc}")
+
     return project
 
 
@@ -115,11 +152,17 @@ async def delete_project(project_id: str, repo=Depends(get_repo), pm=Depends(get
 
 
 @router.get("/{project_id}/export")
-async def export_zip(project_id: str, pm=Depends(get_pm)):
+async def export_zip(project_id: str, pm=Depends(get_pm), repo=Depends(get_repo)):
     from fastapi.responses import Response
 
+    project = await repo.get(project_id)
     try:
-        data = pm.export_zip(project_id)
+        if project is not None and project.mode == "project":
+            from ...engine.workspace import WorkspaceManager
+
+            data = WorkspaceManager(pm.project_dir(project_id)).export_zip()
+        else:
+            data = pm.export_zip(project_id)
     except Exception:
         raise HTTPException(status_code=404, detail="Project not found or empty")
 
