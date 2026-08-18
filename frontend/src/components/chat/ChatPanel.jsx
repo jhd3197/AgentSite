@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import { Sparkle } from "@phosphor-icons/react";
 import ChatMessage from "../builder/ChatMessage";
 import ChatInput from "../builder/ChatInput";
+import BloubAvatar from "../shared/BloubAvatar";
 
 /**
  * Presentational chat surface. Takes messages + send callback; renders
@@ -97,8 +97,8 @@ export default function ChatPanel({
 function DefaultEmptyState() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center">
-      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center mb-4 shadow-lg shadow-brand-500/20">
-        <Sparkle className="text-white" weight="fill" size={24} />
+      <div className="mb-3">
+        <BloubAvatar size={88} state="idle" follow />
       </div>
       <h3 className="text-white font-medium mb-1">Start Building</h3>
       <p className="text-sm text-slate-500 max-w-[280px]">

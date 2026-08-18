@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Sparkle, WarningCircle, SpinnerGap, CheckCircle, CaretDown, CaretRight, Timer, Lightning, Terminal, Copy, ArrowsOut, X, Export, Brain, ArrowCounterClockwise, Wrench, GitCommit, Info } from "@phosphor-icons/react";
+import { WarningCircle, SpinnerGap, CheckCircle, CaretDown, CaretRight, Timer, Lightning, Terminal, Copy, ArrowsOut, X, Export, Brain, ArrowCounterClockwise, Wrench, GitCommit, Info } from "@phosphor-icons/react";
 import { API_BASE } from "../../api/client";
+import BloubAvatar from "../shared/BloubAvatar";
 
 function formatDuration(seconds) {
   if (seconds < 60) return `${Math.round(seconds * 10) / 10}s`;
@@ -436,10 +437,48 @@ function BuildStatusLine({ event: b }) {
   );
 }
 
+// Which bloub state the avatar plays for the current pipeline situation.
+function pipelineMood(agents, builds) {
+  if (agents.some((a) => a.status === "retrying")) return "alert";
+  const lastBuild = builds[builds.length - 1];
+  if (lastBuild?.status === "running") {
+    if (lastBuild.kind === "verify") return "wide";
+    if (lastBuild.kind === "specialist") return "play";
+    return "orbit";
+  }
+  if (lastBuild?.status === "failed") return "alert";
+  const current = agents.find((a) => a.status === "running");
+  if (current) {
+    const n = `${current.name || ""} ${current.label || ""}`.toLowerCase();
+    if (n.includes("design")) return "swirl";
+    if (n.includes("dev")) return "orbit";
+    if (n.includes("review")) return "wide";
+    return "thinking"; // PM, triage, anything plan-shaped
+  }
+  return "thinking";
+}
+
 function AgentProgressMessage({ message }) {
   const [expanded, setExpanded] = useState(false);
   const [logsCopied, setLogsCopied] = useState(false);
   const { agents = [], done, builds = [] } = message;
+
+  // Celebrate only on the live transition to done — an old card remounting
+  // from scrollback must not replay the burst.
+  const [celebrating, setCelebrating] = useState(false);
+  const prevDone = useRef(done);
+  useEffect(() => {
+    if (done && !prevDone.current) {
+      setCelebrating(true);
+      const id = setTimeout(() => setCelebrating(false), 1800);
+      prevDone.current = done;
+      return () => clearTimeout(id);
+    }
+    prevDone.current = done;
+  }, [done]);
+
+  const live = !done || celebrating;
+  const mood = done ? (celebrating ? "burst" : "idle") : pipelineMood(agents, builds);
 
   const current = agents.find((a) => a.status === "running");
   const lastCompleted = [...agents].reverse().find((a) => a.status === "complete");
@@ -454,9 +493,7 @@ function AgentProgressMessage({ message }) {
   return (
     <div className="flex flex-col items-start gap-1">
       <div className="flex items-center gap-2 mb-1 ml-1">
-        <div className="w-5 h-5 rounded bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center">
-          <Sparkle className="text-white" weight="fill" size={10} />
-        </div>
+        <BloubAvatar size={34} state={mood} animate={live} follow={live} className="-m-[6px]" />
         <span className="text-xs font-medium text-slate-400">AgentSite</span>
       </div>
       <div className="bg-slate-900 border border-slate-800 text-slate-300 px-4 py-3 rounded-2xl msg-agent max-w-[90%] shadow-sm w-full">
@@ -558,9 +595,14 @@ export default function ChatMessage({ message }) {
     return (
       <div className="flex flex-col items-start gap-1">
         <div className="flex items-center gap-2 mb-1 ml-1">
-          <div className="w-5 h-5 rounded bg-red-600 flex items-center justify-center">
-            <WarningCircle className="text-white" weight="fill" size={12} />
-          </div>
+          <BloubAvatar
+            size={30}
+            state="exclaim"
+            animate={false}
+            frozenAt={1.2}
+            gradient={["#ef4444", "#b91c1c"]}
+            className="-m-[5px]"
+          />
           <span className="text-xs font-medium text-red-400">Error</span>
         </div>
         <div className="bg-red-950/40 border border-red-500/20 text-red-300 px-4 py-3 rounded-2xl msg-agent max-w-[90%] shadow-sm">
@@ -583,9 +625,7 @@ export default function ChatMessage({ message }) {
   return (
     <div className="flex flex-col items-start gap-1">
       <div className="flex items-center gap-2 mb-1 ml-1">
-        <div className="w-5 h-5 rounded bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center">
-          <Sparkle className="text-white" weight="fill" size={10} />
-        </div>
+        <BloubAvatar size={30} state="idle" animate={false} className="-m-[5px]" />
         <span className="text-xs font-medium text-slate-400">AgentSite</span>
       </div>
       <div className="bg-slate-900 border border-slate-800 text-slate-300 px-4 py-3 rounded-2xl msg-agent max-w-[90%] shadow-sm">
