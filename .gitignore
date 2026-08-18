@@ -223,4 +223,6 @@ prompture_tracking_migration.md
 # Local planning + execution prompts (per-developer, not shared)
 .plan/
 *.png
+# ...but the project's own artwork is not a stray screenshot.
+!assets/*.png
 /.planning

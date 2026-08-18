@@ -1,10 +1,16 @@
 # AgentSite
 
+<p>
+  <img src="https://raw.githubusercontent.com/jhd3197/AgentSite/main/assets/logo-256.png" alt="AgentSite logo" width="96" align="right" />
+</p>
+
 [![PyPI version](https://badge.fury.io/py/agentsite.svg)](https://badge.fury.io/py/agentsite)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://github.com/jhd3197/AgentSite/blob/main/Dockerfile)
 [![Built with Prompture](https://img.shields.io/badge/built%20with-Prompture-blueviolet)](https://pypi.org/project/prompture/)
+
+[<img src="https://serverkit.ai/badge/install.png" alt="Install in ServerKit" width="240">](https://serverkit.ai/i/template/agentsite)
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https://github.com/jhd3197/AgentSite)
 [![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/jhd3197/AgentSite)
