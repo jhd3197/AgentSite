@@ -53,7 +53,7 @@ ruff format .
 
 **Production**: `npm run build` in `frontend/`, then `agentsite serve` serves everything from `frontend/dist/`.
 
-**Agent orchestration** uses the **Prompture** library (`prompture>=0.0.40`). The pipeline is defined in `agentsite/engine/pipeline.py`:
+**Agent orchestration** uses the **Prompture** library (`prompture[all]>=1.9.1`). The pipeline is defined in `agentsite/engine/pipeline.py`:
 
 ```
 Sequential:
