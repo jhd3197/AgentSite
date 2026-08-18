@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://serverkit.ai/serverkit-yaml.schema.json
+#
+# Declarative deploy manifest for ServerKit (https://serverkit.ai).
+# The panel reads this on import and re-reads it on every push, so this file —
+# not the compose/render/railway manifests next to it — is what defines an
+# AgentSite deployment there.
+version: 1
+project: agentsite
+
+services:
+  - name: agentsite
+    type: docker
+    dockerfilePath: Dockerfile
+    port: 6391
+    healthCheckPath: /api/health
+    autoDeploy: true
+    # The image's CMD already binds 0.0.0.0:6391 (honouring $PORT when the host
+    # sets one), so host/port are not declared here — they would be ignored.
+    envVars:
+      - key: AGENTSITE_DEFAULT_MODEL
+        value: openai/gpt-4o
+      # The default model is OpenAI's, so this is the one key a stock install
+      # has to be given. Every other provider is optional — add CLAUDE_API_KEY,
+      # GOOGLE_API_KEY, GROQ_API_KEY, GROK_API_KEY or OPENROUTER_API_KEY in the
+      # panel's environment editor for the ones you actually use.
+      - key: OPENAI_API_KEY
+    disks:
+      # Projects, generated sites, project-mode workspaces and the SQLite
+      # database all live under the data directory — it must outlive the
+      # container.
+      - name: agentsite-data
+        mountPath: /root/.agentsite
+        size: 4GB
+        backup:
+          schedule: daily
+          retain: 7

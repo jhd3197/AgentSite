@@ -6,6 +6,8 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker&logoColor=white)](https://github.com/jhd3197/AgentSite/blob/main/Dockerfile)
 [![Built with Prompture](https://img.shields.io/badge/built%20with-Prompture-blueviolet)](https://pypi.org/project/prompture/)
 
+[<img src="https://serverkit.ai/badge/install.png" alt="Install in ServerKit" width="240">](https://serverkit.ai/i/template/agentsite)
+
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https://github.com/jhd3197/AgentSite)
 [![Deploy to Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/jhd3197/AgentSite)
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/jhd3197/AgentSite)
