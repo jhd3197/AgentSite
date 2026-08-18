@@ -51,11 +51,12 @@ def detect_refusal(text: str) -> RefusalSignal:
     try:
         from prompture.refusal import RefusalDetector  # type: ignore
         verdict = RefusalDetector().detect(text)
-        if getattr(verdict, "is_refusal", False):
+        if verdict.is_refusal:
+            category = getattr(verdict.category, "value", verdict.category)
             return RefusalSignal(
                 is_refusal=True,
-                reason=getattr(verdict, "reason", "prompture-detector"),
-                matched=getattr(verdict, "matched_phrase", "")[:200] if hasattr(verdict, "matched_phrase") else "",
+                reason=f"prompture:{category} ({verdict.confidence:.2f})",
+                matched="; ".join(verdict.matched_markers)[:200],
             )
         return RefusalSignal(is_refusal=False, reason="prompture-clean")
     except Exception:
