@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     verify_timeout_s: int = 30  # per-route navigation timeout
     verify_max_routes: int = 8
 
+    # Live preview watching — inject friction detection into served previews
+    # (JS errors, failed requests, dead clicks). Feedback flows back into the
+    # next generation as structured watch_feedback.
+    watch_enabled: bool = True
+
     # Phase E — triage routing + specialist delegation (project mode)
     triage_enabled: bool = True  # scope follow-up builds (tweak/partial/full)
     specialist_max_delegations: int = 4  # delegate_to_specialist calls per build

@@ -46,6 +46,7 @@ async def start_generation_task(
     discovery_brief: dict | None = None,
     direction_id: str | None = None,
     inherits_from: str | None = None,
+    watch_feedback: list[dict] | None = None,
 ) -> dict[str, Any]:
     """Kick off page generation as a background task.
 
@@ -79,6 +80,11 @@ async def start_generation_task(
     effective_prompt = prompt or page.prompt
     if not effective_prompt:
         raise ValueError("Prompt is required")
+
+    if watch_feedback:
+        from .watch import append_watch_feedback
+
+        effective_prompt = append_watch_feedback(effective_prompt, watch_feedback)
 
     latest = await version_repo.get_latest(page.id)
     if latest and latest.status == "generating":
