@@ -9,9 +9,8 @@ import BloubAvatar from "../shared/BloubAvatar";
  *
  * This component is intentionally framework-agnostic-ish: it knows about
  * the AgentSite message/role conventions but holds no streaming state.
- * Pair with `useChat` (hooks/useChat.js) for a self-contained
- * "drop-anywhere" chat, or wire your own state if you have richer needs
- * (e.g. AgentSite's PageBuilderPage that interleaves generation events).
+ * Wire your own state when embedding (e.g. AgentSite's PageBuilderPage
+ * that interleaves generation events).
  *
  * Props:
  *   - messages: ChatMessage[]

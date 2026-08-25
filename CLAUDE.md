@@ -87,18 +87,27 @@ frontend/
     App.jsx                   # Layout shell (sidebar + outlet)
     index.css                 # Tailwind directives + custom utilities
     api/                      # Fetch wrappers per resource
-    hooks/                    # React hooks for data + WebSocket
+    hooks/                    # React hooks for data + WebSocket + useLocalStorage/useFlash
+    lib/                      # Pure helpers (format.js: dates, tokens, durations)
     context/AppContext.jsx    # Global state provider
-    pages/                    # Route-level page components
+    pages/
+      project/                # Feature folders: seo/, deployments/, brand/
+                              # each = index.jsx shell + components/ + hooks/ + domain .js
+      ...Page.jsx             # Remaining route-level pages
     components/
+      ui/                     # Shared design kit: PageHeader, PageLoading, Panel, Button,
+                              # SectionHeader, Toggle, Field, TextField, TextAreaField,
+                              # CharCounter, ColorField, Accordion, StatusPill, TabButton
       layout/                 # AppSidebar, ProjectSidebar, TopHeader, PageBuilderHeader
       dashboard/              # ProjectCard, CreateProjectCard, ProjectFilterBar
       project/                # PageCard, CreatePageCard, BrandIdentityPanel
       builder/                # ChatSidebar, ChatMessage, ChatInput, PreviewFrame, DeviceSwitcher, VersionSelector, ZoomControls, ProgressPipeline
       agents/                 # AgentCard, AgentMetricsBar, AgentActivityPanel
       analytics/              # MetricCard, TokenChart, CostByAgentChart, ActivityTable
-      shared/                 # Badge, Button, Modal, Spinner, SettingsModal
+      shared/                 # Badge, Modal, Spinner, ModelSelect, popups
 ```
+
+When building new project pages: create a feature folder under `pages/project/<feature>/`, keep the route file a thin composition, reuse `components/ui/*` primitives and `hooks/` instead of hand-rolling fields, toggles, breadcrumbs, loading gates, or localStorage persistence.
 
 ## Configuration
 

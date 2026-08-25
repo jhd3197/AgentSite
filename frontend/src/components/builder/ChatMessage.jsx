@@ -3,25 +3,7 @@ import { createPortal } from "react-dom";
 import { WarningCircle, SpinnerGap, CheckCircle, CaretDown, CaretRight, Timer, Lightning, Terminal, Copy, ArrowsOut, X, Export, Brain, ArrowCounterClockwise, Wrench, GitCommit, Info } from "@phosphor-icons/react";
 import { API_BASE } from "../../api/client";
 import BloubAvatar from "../shared/BloubAvatar";
-
-function formatDuration(seconds) {
-  if (seconds < 60) return `${Math.round(seconds * 10) / 10}s`;
-  const m = Math.floor(seconds / 60);
-  const s = Math.round(seconds % 60);
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
-}
-
-function formatTokens(n) {
-  if (n < 1000) return String(n);
-  if (n < 1_000_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
-  return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-}
-
-function shortModelName(model) {
-  if (!model) return null;
-  const parts = model.split("/");
-  return parts[parts.length - 1];
-}
+import { formatDuration, formatTokens, shortModelName } from "../../lib/format";
 
 function ElapsedTimer({ since }) {
   const [elapsed, setElapsed] = useState(0);

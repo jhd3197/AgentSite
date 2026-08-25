@@ -28,8 +28,6 @@ const FRAMES = {
   },
 };
 
-export const FRAME_KEYS = Object.keys(FRAMES);
-
 export default function DeviceFrame({ frame, children, maxHeight = 700 }) {
   const f = FRAMES[frame];
   if (!f) return children;

@@ -33,7 +33,3 @@ export async function getAgentDailyStats(days = 30) {
 export async function getTodayStats() {
   return fetchJSON("/api/agents/stats/today");
 }
-
-export async function getModelStats() {
-  return fetchJSON("/api/agents/stats/models");
-}

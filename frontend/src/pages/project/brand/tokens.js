@@ -1,0 +1,56 @@
+export const DEFAULT_STYLE_SPEC = {
+  primary_color: "#2563eb",
+  secondary_color: "#1e40af",
+  accent_color: "#f59e0b",
+  background_color: "#ffffff",
+  surface_color: "#f8fafc",
+  text_color: "#1f2937",
+  text_secondary_color: "#6b7280",
+  border_color: "#e5e7eb",
+  font_heading: "Inter",
+  font_body: "Inter",
+  font_mono: "JetBrains Mono",
+  font_size_base: "16px",
+  font_size_sm: "14px",
+  font_size_lg: "18px",
+  font_size_xl: "20px",
+  font_size_2xl: "24px",
+  font_size_3xl: "30px",
+  font_size_4xl: "36px",
+  line_height: "1.6",
+  letter_spacing: "0",
+  font_weight_normal: "400",
+  font_weight_medium: "500",
+  font_weight_bold: "700",
+  layout_style: "top-nav",
+  nav_position: "sticky",
+  footer_style: "standard",
+  max_width: "1200px",
+  container_padding: "1.5rem",
+  section_gap: "4rem",
+  spacing_unit: "1rem",
+  spacing_xs: "0.25rem",
+  spacing_sm: "0.5rem",
+  spacing_md: "1rem",
+  spacing_lg: "1.5rem",
+  spacing_xl: "2rem",
+  spacing_2xl: "3rem",
+  border_radius: "8px",
+  border_radius_sm: "4px",
+  border_radius_lg: "12px",
+  border_radius_full: "9999px",
+  border_width: "1px",
+  shadow_sm: "0 1px 2px rgba(0,0,0,0.05)",
+  shadow_md: "0 4px 6px rgba(0,0,0,0.07)",
+  shadow_lg: "0 10px 15px rgba(0,0,0,0.1)",
+  transition_speed: "150ms",
+  backdrop_blur: "8px",
+};
+
+export function buildSpecFromProject(styleSpec) {
+  const out = {};
+  for (const key of Object.keys(DEFAULT_STYLE_SPEC)) {
+    out[key] = styleSpec?.[key] || DEFAULT_STYLE_SPEC[key];
+  }
+  return out;
+}
