@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse, Response
 
+from ...engine.watch import inject_watch_script
 from ..deps import get_page_repo, get_pm, get_version_repo
 
 logger = logging.getLogger("agentsite.api.preview")
@@ -156,8 +157,19 @@ async def preview_app_file(project_id: str, path: str, pm=Depends(get_pm)):
 
     suffix = target.suffix.lower()
     media_type = _MIME_TYPES.get(suffix, "application/octet-stream")
-    headers = {"Cache-Control": "no-store"} if suffix in (".html", ".htm") else None
-    return FileResponse(target, media_type=media_type, headers=headers)
+    if suffix in (".html", ".htm"):
+        # Inject the live-preview watcher so post-build browsing feeds the
+        # friction report back to the agents.
+        try:
+            html = target.read_text(encoding="utf-8", errors="replace")
+            return Response(
+                content=inject_watch_script(html),
+                media_type="text/html",
+                headers={"Cache-Control": "no-store"},
+            )
+        except Exception:
+            logger.warning("Watch injection failed for %s — serving raw", rel, exc_info=True)
+    return FileResponse(target, media_type=media_type, headers=None)
 
 
 @router.get("/{project_id}/{slug}")
@@ -225,6 +237,16 @@ async def _serve_version_file(pm, project_id: str, slug: str, version: int, path
     if target.exists() and target.is_file():
         suffix = target.suffix.lower()
         media_type = _MIME_TYPES.get(suffix, "application/octet-stream")
+        if suffix in (".html", ".htm"):
+            try:
+                html = target.read_text(encoding="utf-8", errors="replace")
+                return Response(
+                    content=inject_watch_script(html),
+                    media_type="text/html",
+                    headers={"Cache-Control": "no-store"},
+                )
+            except Exception:
+                logger.warning("Watch injection failed for %s — serving raw", path, exc_info=True)
         return FileResponse(target, media_type=media_type)
 
     # SCSS fallback: if requesting .css but only .scss exists, compile on-the-fly
@@ -264,6 +286,9 @@ async def _serve_version_file(pm, project_id: str, slug: str, version: int, path
 
                     suffix = Path(path).suffix.lower()
                     media_type = _MIME_TYPES.get(suffix, "application/octet-stream")
+                    if suffix in (".html", ".htm"):
+                        content = inject_watch_script(content)
+                        media_type = "text/html"
                     return Response(content=content, media_type=media_type)
 
     raise HTTPException(status_code=404, detail=f"File not found: {path}")

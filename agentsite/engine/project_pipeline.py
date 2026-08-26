@@ -221,6 +221,12 @@ class ProjectGenerationPipeline:
 
         output_text = getattr(result, "output_text", "") or ""
         tool_calls = getattr(result, "all_tool_calls", []) or []
+        # Prompture >= 1.9.1 attaches reasoning_content to assistant messages
+        # on every path, so project mode can surface thinking like mockup mode.
+        reasoning_text = ""
+        for msg in getattr(result, "messages", []) or []:
+            if isinstance(msg, dict) and msg.get("role") == "assistant" and msg.get("reasoning_content"):
+                reasoning_text = msg["reasoning_content"]
         await self._emit("agent_complete", agent=agent_key, data={
             "output_preview": output_text[:2000],
             "full_output": output_text,
@@ -230,7 +236,7 @@ class ProjectGenerationPipeline:
             "cost": cost,
             "tool_calls_count": len(tool_calls),
             "model": agent_model,
-            "reasoning": "",
+            "reasoning": reasoning_text,
         })
         return result
 

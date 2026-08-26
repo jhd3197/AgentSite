@@ -24,6 +24,7 @@ class GenerateRequest(BaseModel):
     discovery_brief: dict | None = None  # Phase 1 — answers from the discovery form
     direction_id: str | None = None  # Phase 2 — chosen design direction id
     inherits_from: str | None = None  # Phase 9 — design system id to extend
+    watch_feedback: list[dict] | None = None  # live-preview friction observations
 
 
 @router.post("/api/projects/{project_id}/pages/{slug}/generate")
@@ -58,6 +59,7 @@ async def start_generation(
             discovery_brief=req.discovery_brief,
             direction_id=req.direction_id,
             inherits_from=req.inherits_from,
+            watch_feedback=req.watch_feedback,
         )
     except ValueError as exc:
         msg = str(exc)

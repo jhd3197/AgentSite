@@ -31,7 +31,7 @@ async def list_models():
 
     # Try to import pricing helper
     try:
-        from prompture.model_rates import get_model_rates
+        from prompture.infra import get_model_rates
     except ImportError:
         get_model_rates = None
 

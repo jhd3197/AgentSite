@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import { Sparkle } from "@phosphor-icons/react";
 import ChatMessage from "../builder/ChatMessage";
 import ChatInput from "../builder/ChatInput";
+import BloubAvatar from "../shared/BloubAvatar";
 
 /**
  * Presentational chat surface. Takes messages + send callback; renders
@@ -9,9 +9,8 @@ import ChatInput from "../builder/ChatInput";
  *
  * This component is intentionally framework-agnostic-ish: it knows about
  * the AgentSite message/role conventions but holds no streaming state.
- * Pair with `useChat` (hooks/useChat.js) for a self-contained
- * "drop-anywhere" chat, or wire your own state if you have richer needs
- * (e.g. AgentSite's PageBuilderPage that interleaves generation events).
+ * Wire your own state when embedding (e.g. AgentSite's PageBuilderPage
+ * that interleaves generation events).
  *
  * Props:
  *   - messages: ChatMessage[]
@@ -97,8 +96,8 @@ export default function ChatPanel({
 function DefaultEmptyState() {
   return (
     <div className="flex flex-col items-center justify-center h-full text-center">
-      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center mb-4 shadow-lg shadow-brand-500/20">
-        <Sparkle className="text-white" weight="fill" size={24} />
+      <div className="mb-3">
+        <BloubAvatar size={88} state="idle" follow />
       </div>
       <h3 className="text-white font-medium mb-1">Start Building</h3>
       <p className="text-sm text-slate-500 max-w-[280px]">

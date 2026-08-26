@@ -3,21 +3,37 @@
 from __future__ import annotations
 
 import logging
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..config import settings
+from ..config import init_prompture, settings
 from . import deps
-from .routes import agents, assets, brand, chat, components, design_systems, directions, discovery, edit, generate, memory, models, preview, projects, prompt_templates, providers, skills, templates
-from .websocket import ws_manager
+from .routes import (
+    agents,
+    assets,
+    brand,
+    chat,
+    components,
+    design_systems,
+    directions,
+    discovery,
+    edit,
+    generate,
+    memory,
+    models,
+    preview,
+    projects,
+    prompt_templates,
+    providers,
+    skills,
+    templates,
+)
 
 logger = logging.getLogger("agentsite.api")
 
@@ -45,6 +61,12 @@ async def lifespan(app: FastAPI):
     if _env_path.exists():
         load_dotenv(_env_path, override=False)
     settings.ensure_dirs()
+    # Configure prompture's tracker/cache even when the ASGI app is served
+    # directly (uvicorn/Docker) rather than through `agentsite serve`.
+    try:
+        init_prompture()
+    except Exception:  # pragma: no cover - prompture config is best-effort
+        logger.warning("init_prompture() failed; usage tracking disabled", exc_info=True)
     await deps.db.connect()
     deps.project_repo = deps.ProjectRepository(deps.db)
     deps.page_repo = deps.PageRepository(deps.db)

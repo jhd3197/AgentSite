@@ -224,13 +224,6 @@ async def run_critique_panel(
     ]
     judge = _make_judge(model)
 
-    # Inject deps so reviewer agents can call list_files/read_file/read_guide.
-    for ag in reviewers + [judge]:
-        try:
-            ag.deps = deps  # type: ignore[attr-defined]
-        except Exception:
-            pass
-
     config = DebateConfig(
         rounds=1,
         positions={persona.name: persona.name.split("_")[-1] for persona in
@@ -244,7 +237,9 @@ async def run_critique_panel(
         show_position_in_prompt=False,
     )
 
-    group = AsyncDebateGroup(reviewers, config=config, callbacks=callbacks)
+    # deps= reaches every reviewer and the judge as run(prompt, deps=...), so
+    # their list_files/read_file/read_guide tools get a real RunContext.deps.
+    group = AsyncDebateGroup(reviewers, config=config, callbacks=callbacks, deps=deps)
     topic = (
         f"Review the generated '{page_slug}' page on your dimension. "
         "Use list_files + read_file to inspect the actual generated code first."

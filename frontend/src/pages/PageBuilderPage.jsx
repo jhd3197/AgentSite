@@ -13,11 +13,13 @@ import ChatSidebar from "../components/builder/ChatSidebar";
 import DiscoveryForm from "../components/builder/DiscoveryForm";
 import DirectionPicker from "../components/builder/DirectionPicker";
 import PreviewFrame from "../components/builder/PreviewFrame";
+import WatchIssuesPanel, { issueSummary } from "../components/builder/WatchIssuesPanel";
 import CodeView from "../components/builder/CodeView";
 import ZoomControls from "../components/builder/ZoomControls";
 import RightRail from "../components/builder/RightRail";
 import SaveComponentModal from "../components/builder/SaveComponentModal";
 import useVisualEdit from "../hooks/useVisualEdit";
+import usePreviewWatch from "../hooks/usePreviewWatch";
 import { render as renderBlock, rerender as rerenderBlock } from "../api/blocks";
 import { listComponents, renderComponent } from "../api/components";
 import { PencilSimple, Sparkle } from "@phosphor-icons/react";
@@ -140,6 +142,33 @@ export default function PageBuilderPage() {
   // Live srcdoc streaming still applies while generating, but once a built
   // preview is ready (project mode) the URL preview wins.
   const liveHtml = isProjectMode && gen.previewReady ? null : gen.livePreview?.[slug]?.html;
+
+  // Live watching: the injected preview watcher relays friction (JS errors,
+  // dead clicks, broken requests) via postMessage. A fresh build resets it.
+  const watch = usePreviewWatch(previewUrl);
+
+  const handleWatchFix = () => {
+    const events = watch.issues;
+    if (!events.length || gen.generating) return;
+    const s = issueSummary(events);
+    const bits = [
+      s.errors && `${s.errors} JS error${s.errors > 1 ? "s" : ""}`,
+      s.requests && `${s.requests} broken request${s.requests > 1 ? "s" : ""}`,
+      s.friction && `${s.friction} dead click${s.friction > 1 ? "s" : ""}`,
+    ].filter(Boolean);
+    const text = `Fix the issues I hit while clicking around the live preview: ${bits.join(", ")}.`;
+
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: text, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) },
+    ]);
+    createMessage(projectId, slug, { role: "user", content: text }).catch(() => {});
+
+    const model =
+      project?.model || (models.models.length ? models.models[0].id : "openai/gpt-4o");
+    gen.start(slug, { prompt: text, model, watch_feedback: events });
+    watch.clearIssues();
+  };
 
   const isFirstBrief = (versions?.length || 0) === 0 && messages.every((m) => m.role !== "user");
 
@@ -494,6 +523,16 @@ export default function PageBuilderPage() {
           )}
 
           <ZoomControls zoom={zoom} onZoomChange={setZoom} />
+
+          {/* Live-preview friction detector (errors, dead clicks) */}
+          {viewMode === "preview" && !editMode && (
+            <WatchIssuesPanel
+              issues={watch.issues}
+              onSend={handleWatchFix}
+              onDismiss={watch.clearIssues}
+              disabled={gen.generating}
+            />
+          )}
         </main>
 
         {editMode && viewMode === "preview" && (

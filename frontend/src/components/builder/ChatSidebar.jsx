@@ -6,9 +6,8 @@ import ChatPanel from "../chat/ChatPanel";
  * <ChatPanel> that renders the tweak-mode banner and forwards the
  * legacy prop names PageBuilderPage uses.
  *
- * If you want to embed the chat outside the PageBuilder context, use
- * <StandaloneChat> (or <ChatPanel> + useChat) directly — those don't
- * carry AgentSite's edit-mode awareness.
+ * To embed the chat elsewhere, compose <ChatPanel> with your own
+ * streaming state — this wrapper carries AgentSite's edit-mode awareness.
  */
 export default function ChatSidebar({
   messages,

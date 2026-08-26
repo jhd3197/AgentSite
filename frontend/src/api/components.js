@@ -11,20 +11,10 @@ export function createComponent(projectId, body) {
   });
 }
 
-export function getComponent(projectId, componentId) {
-  return fetchJSON(`/api/projects/${projectId}/components/${componentId}`);
-}
-
 export function updateComponent(projectId, componentId, body) {
   return fetchJSON(`/api/projects/${projectId}/components/${componentId}`, {
     method: "PUT",
     body: JSON.stringify(body),
-  });
-}
-
-export function deleteComponent(projectId, componentId) {
-  return fetchJSON(`/api/projects/${projectId}/components/${componentId}`, {
-    method: "DELETE",
   });
 }
 

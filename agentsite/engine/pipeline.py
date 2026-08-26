@@ -19,14 +19,21 @@ from ..agents.orchestrator import (
     create_specialist_pipeline,
 )
 from ..config import settings
-from ..models import AgentConfig, AgentRun, DiscoveryBrief, PageOutput, Project, ReviewFeedback, SitePlan, StyleSpec, TechStack, WSEvent
+from ..models import (
+    AgentConfig,
+    AgentRun,
+    DiscoveryBrief,
+    PageOutput,
+    Project,
+    ReviewFeedback,
+    SitePlan,
+    StyleSpec,
+    TechStack,
+    WSEvent,
+)
 from .project_manager import ProjectManager
-from .reasoning_patch import apply_reasoning_patch
 
 logger = logging.getLogger("agentsite.pipeline")
-
-# Apply patches at import time
-apply_reasoning_patch()
 
 
 def _agent_name_to_key(name: str) -> str:
@@ -439,8 +446,8 @@ class GenerationPipeline:
                         )
 
             # Extract reasoning/thinking from assistant messages.
-            # The reasoning_patch ensures reasoning_content is present on
-            # assistant messages for all code paths (not just native tool use).
+            # Prompture >= 1.9.1 attaches reasoning_content to assistant
+            # messages on all code paths (not just native tool use).
             reasoning_text = ""
             result_messages = getattr(result, "messages", []) or []
             for msg in result_messages:
