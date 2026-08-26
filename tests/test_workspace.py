@@ -12,7 +12,7 @@ from httpx import ASGITransport, AsyncClient
 from agentsite.api import deps
 from agentsite.api.app import create_app
 from agentsite.engine.project_manager import ProjectManager
-from agentsite.engine.tokens import render_tokens_css
+from agentsite.engine.tokens import render_conventions_css, render_tokens_css
 from agentsite.engine.workspace import WorkspaceManager
 from agentsite.models import StyleSpec
 from agentsite.storage.database import Database
@@ -84,6 +84,26 @@ class TestTemplateRegistry:
         assert "styles/main.css" in files
         assert "scripts/main.js" in files
 
+    def test_conventions_wired_into_both_templates(self):
+        """Every template declares a conventions path, scaffolds the stub,
+        and its styles entry loads it."""
+        import pathlib
+
+        root = pathlib.Path(__file__).parents[1] / "agentsite" / "templates"
+        checks = {
+            "static-multipage": ("scaffold/index.html",),
+            "vite-react-tailwind": ("scaffold/src/index.css",),
+        }
+        for tid, (ref_file,) in checks.items():
+            t = find_template(tid)
+            assert t is not None and t.conventions_path, tid
+            assert (root / tid / "scaffold" / t.conventions_path).exists(), (
+                f"{tid}: missing scaffold stub {t.conventions_path}"
+            )
+            assert "conventions.css" in (root / tid / ref_file).read_text(
+                encoding="utf-8"
+            ), f"{tid}: {ref_file} does not load conventions.css"
+
 
 # ---------------------------------------------------------------------------
 # Tokens renderer <-> scaffold consistency
@@ -126,6 +146,55 @@ class TestTokensRenderer:
         out = render_tokens_css(spec, "css-vars")
         assert "--color-primary: #ff0000;" in out
         assert "Space Grotesk" in out
+
+
+class TestConventionsCSS:
+    def test_house_basics_present(self):
+        out = render_conventions_css(StyleSpec())
+        assert ".ph {" in out
+        assert "@keyframes as-rise" in out
+        assert "[data-reveal-group]" in out
+        assert ":focus-visible" in out
+        assert "::selection" in out
+        assert "prefers-reduced-motion" in out
+
+    def test_default_placeholder_is_stripes(self):
+        out = render_conventions_css(StyleSpec())
+        assert "--stripes" in out
+        # The chosen pattern is the bare .ph default background.
+        stripe_block = out.split(".ph {", 1)[1].split("}", 1)[0]
+        assert "repeating-linear-gradient(-45deg" in stripe_block
+
+    def test_placeholder_style_switches_pattern(self):
+        dots = render_conventions_css(StyleSpec(placeholder_style="dots"))
+        dots_block = dots.split(".ph {", 1)[1].split("}", 1)[0]
+        assert "radial-gradient(var(--as-ph-ink)" in dots_block
+        blueprint = render_conventions_css(StyleSpec(placeholder_style="blueprint"))
+        blueprint_block = blueprint.split(".ph {", 1)[1].split("}", 1)[0]
+        assert "linear-gradient(var(--as-ph-line)" in blueprint_block
+
+    def test_unknown_placeholder_falls_back_to_stripes(self):
+        out = render_conventions_css(StyleSpec(placeholder_style="hologram"))
+        assert "repeating-linear-gradient(-45deg" in out
+
+    def test_personality_notes_rendered_as_comments(self):
+        spec = StyleSpec(
+            aesthetic_direction="editorial ink — broadsheet grid",
+            signature_element="oversized numbered section markers",
+        )
+        out = render_conventions_css(spec)
+        assert "Direction: editorial ink — broadsheet grid" in out
+        assert "Signature element: oversized numbered section markers" in out
+        # Empty fields are omitted, not emitted blank.
+        assert "Motion:" not in out
+        assert "Backgrounds:" not in out
+
+    def test_consumes_tokens_only(self):
+        """The conventions sheet must reference tokens via var(), not hex codes."""
+        spec = StyleSpec(primary_color="#123456")
+        out = render_conventions_css(spec)
+        assert "#123456" not in out
+        assert "var(--color-primary)" in out
 
 
 # ---------------------------------------------------------------------------

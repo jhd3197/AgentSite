@@ -155,6 +155,7 @@ export default function PageBuilderPage() {
       s.errors && `${s.errors} JS error${s.errors > 1 ? "s" : ""}`,
       s.requests && `${s.requests} broken request${s.requests > 1 ? "s" : ""}`,
       s.friction && `${s.friction} dead click${s.friction > 1 ? "s" : ""}`,
+      s.a11y && `${s.a11y} accessibility violation${s.a11y > 1 ? "s" : ""}`,
     ].filter(Boolean);
     const text = `Fix the issues I hit while clicking around the live preview: ${bits.join(", ")}.`;
 

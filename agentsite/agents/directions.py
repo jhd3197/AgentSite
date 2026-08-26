@@ -202,6 +202,11 @@ def synthesize_style_spec(direction: DesignDirection):
         font_body=direction.body_font,
         font_mono=direction.mono_font or "JetBrains Mono",
         direction_id=direction.id,
+        # Personality fields — a picked direction IS an aesthetic decision;
+        # carry it through so conventions.css and the dev personas see it.
+        aesthetic_direction=f"{direction.label} — {direction.mood}",
+        signature_element=direction.posture[0] if direction.posture else "",
+        motion_language="one orchestrated page-load — staggered fade-up reveals via conventions.css [data-reveal-group]",
         bg_oklch=p["bg"],
         surface_oklch=p["surface"],
         fg_oklch=p["fg"],

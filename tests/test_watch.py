@@ -87,6 +87,36 @@ class TestAppendWatchFeedback:
         assert append_watch_feedback("prompt", [{"type": "bogus"}]) == "prompt"
         assert append_watch_feedback("prompt", []) == "prompt"
 
+    def test_a11y_events_add_specialist_hint(self):
+        prompt = append_watch_feedback("Fix it", [
+            {"type": "a11y_violation", "selector": "img.hero", "message": "[serious] image-alt: Images must have alt text"},
+        ])
+        assert "Accessibility violation" in prompt
+        assert 'delegate_to_specialist("accessibility")' in prompt
+
+    def test_no_hint_without_a11y(self):
+        prompt = append_watch_feedback("Fix it", [
+            {"type": "dead_click", "selector": "button.cta", "message": "Clicked CTA"},
+        ])
+        assert "delegate_to_specialist" not in prompt
+
+
+class TestA11yInjectionFlag:
+    def test_flag_defaults_on(self):
+        out = inject_watch_script("<html><head></head><body></body></html>")
+        assert 'data-a11y="1"' in out
+
+    def test_flag_respects_setting(self, monkeypatch):
+        monkeypatch.setattr(settings, "a11y_scan_enabled", False)
+        out = inject_watch_script("<html><head></head><body></body></html>")
+        assert 'data-a11y="0"' in out
+
+    def test_explicit_override_wins(self):
+        out = inject_watch_script(
+            "<html><head></head><body></body></html>", a11y=False
+        )
+        assert 'data-a11y="0"' in out
+
 
 @pytest.fixture
 async def api_client(tmp_path):

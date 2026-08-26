@@ -135,6 +135,7 @@ def create_app(
     app.include_router(models.router)
     app.include_router(assets.router)
     app.include_router(preview.router)
+    app.include_router(preview.root_router)
     app.include_router(providers.router)
     app.include_router(agents.router)
     app.include_router(discovery.router)

@@ -13,6 +13,10 @@ the preview routes) records what actually happens while they click around:
   no focus change. "The user expected this to do something."
 - **frustrated clicks** — repeated clicks (>= 3) on an element that does not
   look interactive at all: an affordance failure worth surfacing.
+- **accessibility violations** — when ``a11y_scan_enabled`` is set, the
+  vendored axe-core is lazily loaded and run against the page shortly after
+  load (plus debounced rescans on real DOM churn): WCAG 2.x A/AA violations
+  join the same event stream.
 
 Events are batched and relayed to the parent app via ``postMessage``
 (sandboxed iframes can't fetch same-origin APIs, but they CAN talk to their
@@ -35,7 +39,15 @@ _DEAD_CLICK_MS = 1200  # observation window after a click
 _FLUSH_MS = 1500  # batch interval for postMessage to the parent
 _MAX_EVENTS = 200  # per-page-session cap so a broken site can't spam forever
 
-_WATCH_SCRIPT = f"""<script data-agentsite-watch>(function() {{
+# Accessibility scanning (axe-core, lazily loaded from /_agentsite/axe.min.js)
+_A11Y_TAGS = ["wcag2a", "wcag2aa", "best-practice"]
+_A11Y_MAX_VIOLATIONS = 20  # per scan
+_A11Y_MAX_SCANS = 8  # per page session (initial + SPA route changes)
+_A11Y_RESCAN_MUTATIONS = 30  # DOM churn needed before a rescan
+_A11Y_SCAN_DELAY_MS = 1800  # debounce after load / churn
+_A11Y_FLAG = "__AS_A11Y__"  # replaced per-request by inject_watch_script
+
+_WATCH_SCRIPT = f"""<script data-agentsite-watch data-a11y="{_A11Y_FLAG}">(function() {{
   if ("{_MARKER}" in window) {{ window.{_MARKER} = true; return; }}
   window.{_MARKER} = true;
   var MAX_EVENTS = {_MAX_EVENTS};
@@ -233,6 +245,58 @@ _WATCH_SCRIPT = f"""<script data-agentsite-watch>(function() {{
     }} catch (err) {{}}
   }}, true);
 
+  // ---- accessibility scanning (axe-core, optional) ----
+  var A11Y = false;
+  try {{ A11Y = document.currentScript && document.currentScript.dataset.a11y === '1'; }} catch (e) {{}}
+  if (A11Y) {{
+    var scansLeft = {_A11Y_MAX_SCANS};
+    var mutAtScan = 0, scanTimer = null;
+    function loadAxe(cb) {{
+      try {{
+        if (window.axe && window.axe.run) return cb();
+        var s = document.createElement('script');
+        s.src = '/_agentsite/axe.min.js';
+        s.onload = function() {{ cb(); }};
+        s.onerror = function() {{ scansLeft = 0; }};  // asset missing — stop trying
+        document.head.appendChild(s);
+      }} catch (e) {{ scansLeft = 0; }}
+    }}
+    function runA11yScan() {{
+      if (scansLeft <= 0 || !document.body) return;
+      scansLeft--;
+      mutAtScan = mutCount;
+      loadAxe(function() {{
+        try {{
+          window.axe.run(document, {{
+            runOnly: {{ type: 'tag', values: {_A11Y_TAGS} }},
+            resultTypes: ['violations'],
+          }}).then(function(res) {{
+            if (!res || !res.violations) return;
+            res.violations.slice(0, {_A11Y_MAX_VIOLATIONS}).forEach(function(v) {{
+              var sel = v.nodes && v.nodes[0] && v.nodes[0].target ? v.nodes[0].target.join(' ') : '';
+              ev('a11y_violation', {{
+                message: '[' + (v.impact || 'minor') + '] ' + v.id + ': ' + (v.help || '').slice(0, 140),
+                selector: String(sel).slice(0, 140),
+                nodes: v.nodes ? v.nodes.length : 1,
+                detail: v.helpUrl || '',
+              }});
+            }});
+          }}).catch(function() {{}});
+        }} catch (e) {{}}
+      }});
+    }}
+    function scheduleA11yScan() {{
+      if (scansLeft <= 0) return;
+      clearTimeout(scanTimer);
+      scanTimer = setTimeout(runA11yScan, {_A11Y_SCAN_DELAY_MS});
+    }}
+    setTimeout(scheduleA11yScan, 400);
+    // Rescan on real DOM churn (SPA route changes etc.), debounced and capped.
+    setInterval(function() {{
+      if (mutCount - mutAtScan >= {_A11Y_RESCAN_MUTATIONS}) scheduleA11yScan();
+    }}, 2500);
+  }}
+
   // ---- batching to the parent app ----
   setInterval(function() {{
     if (!buf.length) return;
@@ -250,19 +314,22 @@ def watch_enabled() -> bool:
     return bool(settings.watch_enabled)
 
 
-def inject_watch_script(html: str) -> str:
+def inject_watch_script(html: str, *, a11y: bool | None = None) -> str:
     """Insert the watcher <script> into an HTML document (idempotent).
 
     Prefers injecting right before ``</head>``; falls back to prepending to
-    the document when no head/body markers exist.
+    the document when no head/body markers exist. ``a11y`` overrides
+    ``settings.a11y_scan_enabled`` for this response.
     """
     if not settings.watch_enabled or _MARKER in html:
         return html
+    flag = "1" if (settings.a11y_scan_enabled if a11y is None else a11y) else "0"
+    script = _WATCH_SCRIPT.replace(_A11Y_FLAG, flag)
     match = re.search(r"</head\s*>", html, flags=re.IGNORECASE)
     if match:
         idx = match.start()
-        return html[:idx] + _WATCH_SCRIPT + html[idx:]
-    return _WATCH_SCRIPT + html
+        return html[:idx] + script + html[idx:]
+    return script + html
 
 
 _TYPE_LABELS = {
@@ -273,6 +340,7 @@ _TYPE_LABELS = {
     "failed_resource": "Broken asset",
     "dead_click": "Dead click (looked clickable, nothing happened)",
     "repeat_click": "Repeated clicks on a non-interactive element",
+    "a11y_violation": "Accessibility violation",
 }
 
 _MAX_FEEDBACK_LINES = 40
@@ -322,6 +390,11 @@ def render_watch_feedback(events: Iterable[dict]) -> str:
         "Fix these so the interactions work as the tester expected. "
         "Prefer targeted edits."
     )
+    if any(key[0] == "a11y_violation" for key in order):
+        lines.append(
+            "Accessibility violations are present — consider "
+            'delegate_to_specialist("accessibility") for a focused pass.'
+        )
     return "\n".join(lines)
 
 
