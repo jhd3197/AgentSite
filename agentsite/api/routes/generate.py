@@ -22,6 +22,7 @@ class GenerateRequest(BaseModel):
     budget_policy: str | None = None  # per-request policy override
     provider_keys: dict[str, str] | None = None  # per-request provider key overrides
     discovery_brief: dict | None = None  # Phase 1 — answers from the discovery form
+    strategy: str | None = None  # "progressive" for staged layout→sections build
     direction_id: str | None = None  # Phase 2 — chosen design direction id
     inherits_from: str | None = None  # Phase 9 — design system id to extend
     watch_feedback: list[dict] | None = None  # live-preview friction observations
@@ -57,6 +58,7 @@ async def start_generation(
             budget_policy=req.budget_policy,
             provider_keys=req.provider_keys,
             discovery_brief=req.discovery_brief,
+            strategy=req.strategy,
             direction_id=req.direction_id,
             inherits_from=req.inherits_from,
             watch_feedback=req.watch_feedback,

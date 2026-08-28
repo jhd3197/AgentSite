@@ -20,6 +20,7 @@ import BloubAvatar from "../shared/BloubAvatar";
  *   - topBanner?: ReactNode — sticky banner above messages (e.g. edit-mode)
  *   - stickyForm?: ReactNode — sticky form above messages (e.g. discovery survey)
  *   - belowMessages?: ReactNode — extra content under the last message (e.g. todo stream)
+ *   - aboveInput?: ReactNode — small accessory row rendered above the input
  *   - emptyState?: ReactNode — custom empty-state block
  *   - className?: outer aside class override
  *   - inputDisabledReason?: string — show a small hint instead of the input
@@ -32,6 +33,7 @@ export default function ChatPanel({
   topBanner = null,
   stickyForm = null,
   belowMessages = null,
+  aboveInput = null,
   emptyState = null,
   className = "w-[420px] flex flex-col border-r border-slate-800 bg-slate-950 relative z-10 shadow-2xl",
   inputDisabledReason = null,
@@ -82,12 +84,15 @@ export default function ChatPanel({
           {inputDisabledReason}
         </div>
       ) : (
-        <ChatInput
-          onSend={onSend}
-          onSteer={onSteer}
-          generating={generating}
-          disabled={!!stickyForm}
-        />
+        <>
+          {aboveInput}
+          <ChatInput
+            onSend={onSend}
+            onSteer={onSteer}
+            generating={generating}
+            disabled={!!stickyForm}
+          />
+        </>
       )}
     </aside>
   );

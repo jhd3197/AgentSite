@@ -20,6 +20,7 @@ export default function ChatSidebar({
   editSelection = null,
   editSelections = [],
   onCreateNewDesign = null,
+  aboveInput = null,
 }) {
   const banner = editMode ? (
     <EditModeBanner selection={editSelection} selections={editSelections} />
@@ -36,6 +37,7 @@ export default function ChatSidebar({
       topBanner={banner}
       stickyForm={discoveryForm}
       belowMessages={todoStream}
+      aboveInput={aboveInput}
     />
   );
 }
