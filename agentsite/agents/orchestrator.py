@@ -158,6 +158,22 @@ def _inject_driver_if_needed(agent: Any, model_str: str, provider_keys: dict[str
         agent.driver = driver
 
 
+def _render_verify_step(enabled: bool):
+    """Build the render-verify loop step, or None when it can't run.
+
+    When verification is disabled or Playwright isn't installed the step is
+    omitted entirely, so the review loop behaves exactly as before
+    (code-reading review only).
+    """
+    if not enabled:
+        return None
+    from ..engine import verifier
+
+    if not verifier.playwright_available():
+        return None
+    return verifier.RenderVerifyStep()
+
+
 def create_dynamic_pipeline(
     required_agents: list[str],
     model: str | None = None,
@@ -174,6 +190,7 @@ def create_dynamic_pipeline(
     budget_max_tokens: int | None = None,
     on_model_fallback: Any | None = None,
     provider_keys: dict[str, str] | None = None,
+    render_verify: bool = False,
 ) -> AsyncSequentialGroup:
     """Build a dynamic pipeline based on PM's required_agents output.
 
@@ -235,44 +252,78 @@ def create_dynamic_pipeline(
         _apply_budget_to_agent(reviewer, **_budget_kw)
         _inject_driver_if_needed(reviewer, _rev_m, provider_keys)
 
+        # Rendered-output verification: a loop step between developer and
+        # reviewer verifies the actual page in a headless browser. Failures
+        # block loop exit (like a reviewer rejection) and flow back to the
+        # developer via {verify_feedback}; screenshots reach the reviewer
+        # through the vision proxy when the model supports images.
+        verify_step = _render_verify_step(render_verify)
+        reviewer_step: Any = reviewer
+        dev_verify_line = ""
+        rev_verify_line = ""
+        if verify_step is not None:
+            from ..engine.verifier import VisionReviewerProxy
+
+            reviewer_step = VisionReviewerProxy(reviewer, _rev_m)
+            dev_verify_line = (
+                "Automated render verification (from loading the page in a real "
+                "browser; failures MUST be fixed, empty means it passed):\n"
+                "{verify_feedback}\n\n"
+            )
+            rev_verify_line = (
+                "Automated render verification failures (from a real browser; "
+                "weigh these heavily in your score):\n{verify_feedback}\n\n"
+                "If screenshots of the rendered page are attached, judge the "
+                "visual result from them (layout, spacing, responsiveness).\n\n"
+            )
+
         def _exit_condition(state: dict[str, Any], iteration: int) -> bool:
+            if state.get("verify_feedback"):
+                return False  # rendered page failed verification — keep fixing
             feedback_text = state.get("review_feedback", "")
             if not feedback_text:
                 return False
-            if '"approved": true' in feedback_text.lower() or '"approved":true' in feedback_text.lower():
-                return True
-            return False
+            lower = feedback_text.lower()
+            return '"approved": true' in lower or '"approved":true' in lower
+
+        loop_steps: list[Any] = [
+            (
+                developer,
+                "You are building the '{page_slug}' page ONLY. "
+                "Ignore other pages in the site plan.\n\n"
+                "Build the website page based on this plan:\n\n"
+                "Site Plan: {site_plan}\n\n"
+                "Style Spec: {style_spec}\n\n"
+                "Project Design Guide: {design_system_guide}\n"
+                "Architecture Guide: {architecture_guide}\n\n"
+                "Logo URL: {logo_url}\n"
+                "Icon URL: {icon_url}\n\n"
+                "Previous review feedback (if any): {review_feedback}\n\n"
+                + dev_verify_line
+                + "Use the write_file tool to save each file. Generate complete, "
+                "self-contained HTML with inline or linked CSS/JS.",
+            ),
+        ]
+        if verify_step is not None:
+            loop_steps.append(verify_step)
+        loop_steps.append(
+            (
+                reviewer_step,
+                "Review the generated website code.\n\n"
+                "Site Plan: {site_plan}\n"
+                "Style Spec: {style_spec}\n"
+                "Project Design Guide: {design_system_guide}\n"
+                "Architecture Guide: {architecture_guide}\n"
+                "Developer output: {page_output}\n\n"
+                + rev_verify_line
+                + "IMPORTANT: First call the list_files tool to discover what files were generated, "
+                "then use read_file to inspect each one. "
+                f"Approve if quality score >= {threshold}.",
+            ),
+        )
 
         build_review_loop = AsyncLoopGroup(
-            [
-                (
-                    developer,
-                    "You are building the '{page_slug}' page ONLY. "
-                    "Ignore other pages in the site plan.\n\n"
-                    "Build the website page based on this plan:\n\n"
-                    "Site Plan: {site_plan}\n\n"
-                    "Style Spec: {style_spec}\n\n"
-                    "Project Design Guide: {design_system_guide}\n"
-                    "Architecture Guide: {architecture_guide}\n\n"
-                    "Logo URL: {logo_url}\n"
-                    "Icon URL: {icon_url}\n\n"
-                    "Previous review feedback (if any): {review_feedback}\n\n"
-                    "Use the write_file tool to save each file. Generate complete, "
-                    "self-contained HTML with inline or linked CSS/JS.",
-                ),
-                (
-                    reviewer,
-                    "Review the generated website code.\n\n"
-                    "Site Plan: {site_plan}\n"
-                    "Style Spec: {style_spec}\n"
-                    "Project Design Guide: {design_system_guide}\n"
-                    "Architecture Guide: {architecture_guide}\n"
-                    "Developer output: {page_output}\n\n"
-                    "IMPORTANT: First call the list_files tool to discover what files were generated, "
-                    "then use read_file to inspect each one. "
-                    f"Approve if quality score >= {threshold}.",
-                ),
-            ],
+            loop_steps,
             exit_condition=_exit_condition,
             max_iterations=max_iters,
             callbacks=callbacks,
@@ -323,6 +374,7 @@ def create_specialist_pipeline(
     budget_max_tokens: int | None = None,
     on_model_fallback: Any | None = None,
     provider_keys: dict[str, str] | None = None,
+    render_verify: bool = False,
 ) -> AsyncSequentialGroup:
     """Build a specialist pipeline with parallel execution.
 
@@ -357,6 +409,17 @@ def create_specialist_pipeline(
     effective_model = model or settings.default_model
     max_iters = max_review_iterations or settings.max_review_iterations
     threshold = review_threshold or settings.review_approval_threshold
+
+    # Rendered-output verification step (see create_dynamic_pipeline). Built
+    # up front so specialist prompts can surface {verify_feedback} on retries.
+    verify_step = _render_verify_step(render_verify)
+    dev_verify_line = ""
+    if verify_step is not None:
+        dev_verify_line = (
+            "Automated render verification (from loading the page in a real "
+            "browser; failures MUST be fixed, empty means it passed):\n"
+            "{verify_feedback}\n\n"
+        )
 
     _budget_kw = dict(
         budget_policy=budget_policy,
@@ -408,7 +471,8 @@ def create_specialist_pipeline(
                 "Skill guidance (when set, treat as authoritative for this page type):\n"
                 "{skill_instructions}\n\n"
                 "Previous review feedback (if any): {review_feedback}\n\n"
-                "Write the HTML markup file. Reference styles.css and script.js via link/script tags.",
+                + dev_verify_line
+                + "Write the HTML markup file. Reference styles.css and script.js via link/script tags.",
             )
         )
 
@@ -427,7 +491,8 @@ def create_specialist_pipeline(
                 "Design Guide: {design_system_guide}\n"
                 "Tech Stack: {tech_stack}\n\n"
                 "Previous review feedback (if any): {review_feedback}\n\n"
-                "Write styles.scss with all design tokens and responsive styles.",
+                + dev_verify_line
+                + "Write styles.scss with all design tokens and responsive styles.",
             )
         )
     elif "style" in required_agents:
@@ -444,7 +509,8 @@ def create_specialist_pipeline(
                 "Design Guide: {design_system_guide}\n"
                 "Tech Stack: {tech_stack}\n\n"
                 "Previous review feedback (if any): {review_feedback}\n\n"
-                "Write styles.css with all design tokens and responsive styles.",
+                + dev_verify_line
+                + "Write styles.css with all design tokens and responsive styles.",
             )
         )
 
@@ -462,7 +528,8 @@ def create_specialist_pipeline(
                 "Architecture Guide: {architecture_guide}\n"
                 "Tech Stack: {tech_stack}\n\n"
                 "Previous review feedback (if any): {review_feedback}\n\n"
-                "Write script.js with mobile menu, smooth scroll, animations, form handling.",
+                + dev_verify_line
+                + "Write script.js with mobile menu, smooth scroll, animations, form handling.",
             )
         )
 
@@ -577,7 +644,23 @@ def create_specialist_pipeline(
         _apply_budget_to_agent(reviewer, **_budget_kw)
         _inject_driver_if_needed(reviewer, _rev_m, provider_keys)
 
+        # Rendered-output verification step (built up front; see above).
+        reviewer_step: Any = reviewer
+        rev_verify_line = ""
+        if verify_step is not None:
+            from ..engine.verifier import VisionReviewerProxy
+
+            reviewer_step = VisionReviewerProxy(reviewer, _rev_m)
+            rev_verify_line = (
+                "Automated render verification failures (from a real browser; "
+                "weigh these heavily in your score):\n{verify_feedback}\n\n"
+                "If screenshots of the rendered page are attached, judge the "
+                "visual result from them (layout, spacing, responsiveness).\n\n"
+            )
+
         def _exit_condition(state: dict[str, Any], iteration: int) -> bool:
+            if state.get("verify_feedback"):
+                return False  # rendered page failed verification — keep fixing
             feedback_text = state.get("review_feedback", "")
             if not feedback_text:
                 return False
@@ -587,15 +670,18 @@ def create_specialist_pipeline(
         # Build the inner steps: build parallel group + post-processing + reviewer
         loop_inner: list[Any] = [parallel_group]
         loop_inner.extend(post_process_steps)
+        if verify_step is not None:
+            loop_inner.append(verify_step)
         loop_inner.append(
             (
-                reviewer,
+                reviewer_step,
                 "Review the generated website code.\n\n"
                 "Site Plan: {site_plan}\n"
                 "Style Spec: {style_spec}\n"
                 "Design Guide: {design_system_guide}\n"
                 "Architecture Guide: {architecture_guide}\n\n"
-                "IMPORTANT: First call list_files to discover what files were generated, "
+                + rev_verify_line
+                + "IMPORTANT: First call list_files to discover what files were generated, "
                 "then use read_file to inspect each one. "
                 f"Approve if quality score >= {threshold}.",
             ),

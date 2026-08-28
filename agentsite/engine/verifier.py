@@ -164,6 +164,16 @@ def plan_routes(
     return routes[: settings.verify_max_routes], missing
 
 
+def page_routes(page_dir: Path) -> list[tuple[str, str]]:
+    """Routes for a single page-version directory (mockup mode).
+
+    Every top-level ``*.html`` file is a route; ``index.html`` first.
+    """
+    files = sorted(page_dir.glob("*.html"), key=lambda f: (f.name != "index.html", f.name))
+    routes = [(f.name, f"/{f.name}") for f in files]
+    return routes[: settings.verify_max_routes]
+
+
 class _QuietHandler(SimpleHTTPRequestHandler):
     def log_message(self, format: str, *args) -> None:  # matches base signature
         pass
@@ -214,11 +224,54 @@ async def run_verification(
         serve_root = workspace_dir
 
     verify_dir = workspace_dir / ".agentsite" / "verify" / f"v{version}"
+    routes, missing = plan_routes(template, site_plan, serve_root)
+    return await _verify_routes(serve_root, routes, missing, verify_dir, version)
+
+
+async def run_page_verification(
+    page_dir: Path,
+    version: int,
+    *,
+    enabled: bool | None = None,
+) -> VerifyReport:
+    """Verify a single rendered page-version directory (mockup mode).
+
+    Serves ``page_dir`` directly (index.html + styles.css + script.js +
+    assets) and walks every top-level HTML page. Screenshots land in
+    ``page_dir/.verify/v{n}/``. Never raises — failures land in the report.
+    """
+    if enabled is None:
+        enabled = settings.verify_enabled
+    if not enabled:
+        return VerifyReport(skipped=True, skip_reason="verification disabled in settings")
+    if not playwright_available():
+        return VerifyReport(
+            skipped=True,
+            skip_reason=(
+                "playwright not installed — pip install agentsite[verify] "
+                "&& playwright install chromium"
+            ),
+        )
+    if not (page_dir / "index.html").exists():
+        return VerifyReport(skipped=True, skip_reason="no index.html to verify")
+
+    verify_dir = page_dir / ".verify" / f"v{version}"
+    routes = page_routes(page_dir)
+    return await _verify_routes(page_dir, routes, [], verify_dir, version)
+
+
+async def _verify_routes(
+    serve_root: Path,
+    routes: list[tuple[str, str]],
+    missing: list[str],
+    verify_dir: Path,
+    version: int,
+) -> VerifyReport:
+    """Serve ``serve_root`` and walk ``routes`` in headless Chromium."""
     if verify_dir.exists():
         shutil.rmtree(verify_dir, ignore_errors=True)
     verify_dir.mkdir(parents=True, exist_ok=True)
 
-    routes, missing = plan_routes(template, site_plan, serve_root)
     report = VerifyReport(missing_pages=missing)
     start = time.monotonic()
 
@@ -347,3 +400,73 @@ async def _check_route(
 def evaluate_gate(report: VerifyReport) -> bool:
     """The hard gate: skipped reports pass, failed reports cannot be overridden."""
     return report.skipped or report.ok
+
+
+# ---------------------------------------------------------------------------
+# Mockup-pipeline glue: verify step + vision reviewer proxy for LoopGroups
+# ---------------------------------------------------------------------------
+
+
+class RenderVerifyStep:
+    """LoopGroup step that verifies the rendered page between dev and review.
+
+    Quacks like a prompture agent (``name`` / ``output_key`` / ``run``) so it
+    can sit inside an ``AsyncLoopGroup`` between the developer and reviewer.
+    Writes ``verify_feedback`` into shared state: empty when the page passes
+    (or verification is unavailable), the actionable ``render_feedback()``
+    text when it fails — the loop's exit condition treats a non-empty value
+    like a reviewer rejection. Absolute screenshot paths are stashed in
+    ``deps['verify_screenshots']`` for a vision-capable reviewer.
+    """
+
+    name = "agentsite_render_verify"
+    output_key = "verify_feedback"
+
+    async def run(self, prompt: str = "", deps: dict | None = None):
+        from types import SimpleNamespace
+
+        deps = deps if isinstance(deps, dict) else {}
+        version_dir = Path(deps.get("version_dir") or ".")
+        m = re.search(r"v(\d+)$", version_dir.name)
+        version = int(m.group(1)) if m else 1
+
+        report = await run_page_verification(version_dir, version)
+
+        shots: list[str] = []
+        if not report.skipped:
+            shots = [str(version_dir / ".verify" / rel) for rel in report.screenshot_rel_paths]
+            shots.sort(key=lambda s: 0 if "desktop" in s else 1)
+        deps["verify_screenshots"] = shots
+
+        text = "" if (report.skipped or report.ok) else report.render_feedback()
+        return SimpleNamespace(output_text=text, run_usage={})
+
+
+class VisionReviewerProxy:
+    """Wrap the reviewer agent to attach verify screenshots for vision models.
+
+    Mirrors project mode: screenshots (desktop first, max 6) are only passed
+    when the reviewer model ``supports_vision()``; otherwise the reviewer is
+    called exactly as before.
+    """
+
+    def __init__(self, agent, model: str) -> None:
+        self._agent = agent
+        self._model = model
+        self.name = getattr(agent, "name", "")
+        self.output_key = getattr(agent, "output_key", None)
+
+    @property
+    def callbacks(self):
+        return getattr(self._agent, "callbacks", None)
+
+    @callbacks.setter
+    def callbacks(self, value) -> None:
+        self._agent.callbacks = value
+
+    async def run(self, prompt: str, deps: dict | None = None):
+        from .capabilities import supports_vision
+
+        shots = (deps or {}).get("verify_screenshots") or []
+        images = shots[:6] if shots and supports_vision(self._model) else None
+        return await self._agent.run(prompt, deps=deps, images=images)

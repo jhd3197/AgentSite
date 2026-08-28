@@ -52,6 +52,7 @@ def _agent_name_to_key(name: str) -> str:
         "agentsite_seo": "seo",
         "agentsite_accessibility": "accessibility",
         "agentsite_animation": "animation",
+        "agentsite_render_verify": "render_verify",
     }
     return _NAME_MAP.get(name, name)
 
@@ -841,6 +842,7 @@ class GenerationPipeline:
                 "site_plan": site_plan_text,
                 "project_dir": self._pm.project_dir(project.id),
                 "review_feedback": "",
+                "verify_feedback": "",
                 "logo_url": project.logo_url or "",
                 "icon_url": project.icon_url or "",
                 "page_slug": slug,
@@ -1022,6 +1024,7 @@ class GenerationPipeline:
                     provider_keys=self._provider_keys,
                     max_review_iterations=max_review_iterations,
                     review_threshold=review_threshold,
+                    render_verify=settings.verify_enabled,
                     **budget_kwargs,
                 )
             else:
@@ -1035,6 +1038,7 @@ class GenerationPipeline:
                     provider_keys=self._provider_keys,
                     max_review_iterations=max_review_iterations,
                     review_threshold=review_threshold,
+                    render_verify=settings.verify_enabled,
                     **budget_kwargs,
                 )
 
