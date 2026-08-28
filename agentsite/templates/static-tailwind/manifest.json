@@ -1,0 +1,16 @@
+{
+  "id": "static-tailwind",
+  "name": "Static + Tailwind (CDN)",
+  "description": "A multi-page static website styled with Tailwind CSS 4 via the browser CDN and token-driven theme variables — no build step, no framework.",
+  "kind": "static",
+  "install_cmd": null,
+  "build_cmd": null,
+  "dev_cmd": null,
+  "output_dir": null,
+  "entry": "index.html",
+  "tokens_path": "styles/tokens.css",
+  "tokens_format": "css-vars",
+  "conventions_path": "styles/conventions.css",
+  "protected_paths": [],
+  "requires_tools": true
+}

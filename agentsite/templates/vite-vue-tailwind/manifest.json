@@ -1,0 +1,16 @@
+{
+  "id": "vite-vue-tailwind",
+  "name": "Vite + Vue + Tailwind",
+  "description": "A Vue 3 single-page app built with Vite 6, Tailwind CSS 4 theme tokens, and hash-based routing via Vue Router 4.",
+  "kind": "node",
+  "install_cmd": ["npm", "install"],
+  "build_cmd": ["npm", "run", "build"],
+  "dev_cmd": ["npm", "run", "dev"],
+  "output_dir": "dist",
+  "entry": "index.html",
+  "tokens_path": "src/styles/tokens.css",
+  "tokens_format": "tailwind4",
+  "conventions_path": "src/styles/conventions.css",
+  "protected_paths": ["package.json", "vite.config.js", "index.html"],
+  "requires_tools": true
+}

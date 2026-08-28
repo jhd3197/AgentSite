@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Home — My Site</title>
+  <meta name="description" content="A new website built with AgentSite." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet" />
+  <!--
+    Tailwind CSS 4 browser build: compiles the utilities used on this page at
+    load time (requires internet access when viewing). The @theme inline block
+    maps the design tokens from styles/tokens.css onto Tailwind utilities
+    (bg-primary, text-text, font-heading, rounded-lg, ...). Every page needs
+    BOTH the CDN script and this block, in this order — copy them verbatim.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style type="text/tailwindcss">
+    @theme inline {
+      --color-primary: var(--color-primary);
+      --color-secondary: var(--color-secondary);
+      --color-accent: var(--color-accent);
+      --color-bg: var(--color-bg);
+      --color-surface: var(--color-surface);
+      --color-text: var(--color-text);
+      --color-text-secondary: var(--color-text-secondary);
+      --color-border: var(--color-border);
+
+      --font-heading: var(--font-heading);
+      --font-body: var(--font-body);
+      --font-mono: var(--font-mono);
+
+      --radius-sm: var(--radius-sm);
+      --radius-md: var(--radius-md);
+      --radius-lg: var(--radius-lg);
+    }
+  </style>
+  <link rel="stylesheet" href="styles/tokens.css" />
+  <link rel="stylesheet" href="styles/main.css" />
+  <link rel="stylesheet" href="styles/conventions.css" />
+  <script src="scripts/main.js" defer></script>
+</head>
+<body class="flex min-h-screen flex-col bg-bg font-body text-text">
+  <header class="sticky top-0 z-10 border-b border-border bg-bg">
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-4">
+      <a class="site-logo font-heading text-lg font-bold text-text transition-colors hover:text-primary" href="index.html">My Site</a>
+      <button class="nav-toggle inline-flex flex-col justify-center rounded-sm border border-border p-2 md:hidden" type="button" aria-expanded="false" aria-controls="site-nav" aria-label="Toggle navigation">
+        <span class="nav-toggle__bar block h-0.5 w-5 rounded-full bg-text" aria-hidden="true"></span>
+        <span class="nav-toggle__bar mt-1 block h-0.5 w-5 rounded-full bg-text" aria-hidden="true"></span>
+        <span class="nav-toggle__bar mt-1 block h-0.5 w-5 rounded-full bg-text" aria-hidden="true"></span>
+      </button>
+      <nav id="site-nav" class="site-nav hidden w-full md:block md:w-auto" aria-label="Main navigation">
+        <ul class="flex flex-col gap-1 pb-4 md:flex-row md:items-center md:gap-2 md:pb-0">
+          <li><a class="site-nav__link block rounded-sm px-3 py-2 font-medium text-text-secondary transition-colors hover:bg-surface hover:text-text" href="index.html">Home</a></li>
+          <li><a class="site-nav__link block rounded-sm px-3 py-2 font-medium text-text-secondary transition-colors hover:bg-surface hover:text-text" href="about.html">About</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="flex-1">
+    <section class="bg-surface">
+      <div class="mx-auto max-w-6xl px-6 py-20 text-center">
+        <h1 class="font-heading text-4xl font-bold text-text md:text-5xl">Your new site starts here</h1>
+        <p class="mx-auto mt-4 max-w-xl text-lg text-text-secondary">This is the starter scaffold. Replace this hero with real content for your project.</p>
+        <div class="mt-8 flex justify-center">
+          <a class="rounded-lg bg-primary px-6 py-3 font-medium text-white shadow-sm transition-colors hover:bg-secondary" href="about.html">Learn more</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-border bg-surface">
+    <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-6 py-8 text-sm text-text-secondary md:flex-row">
+      <p>&copy; 2026 My Site. All rights reserved.</p>
+    </div>
+  </footer>
+</body>
+</html>

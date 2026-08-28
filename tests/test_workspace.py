@@ -63,6 +63,9 @@ class TestTemplateRegistry:
         ids = {t.id for t in list_templates()}
         assert "static-multipage" in ids
         assert "vite-react-tailwind" in ids
+        assert "astro" in ids
+        assert "vite-vue-tailwind" in ids
+        assert "static-tailwind" in ids
 
     def test_find_template(self):
         t = find_template("vite-react-tailwind")
@@ -74,8 +77,39 @@ class TestTemplateRegistry:
         assert find_template(None) is None
 
     def test_template_docs_exist(self):
-        assert len(read_template_doc("static-multipage")) > 500
-        assert len(read_template_doc("vite-react-tailwind")) > 500
+        for tid in (
+            "static-multipage",
+            "vite-react-tailwind",
+            "astro",
+            "vite-vue-tailwind",
+            "static-tailwind",
+        ):
+            assert len(read_template_doc(tid)) > 500, tid
+
+    def test_manifest_contract_all_templates(self):
+        """Every template manifest satisfies the engine's expectations."""
+        import pathlib
+
+        root = pathlib.Path(__file__).parents[1] / "agentsite" / "templates"
+        for t in list_templates():
+            assert t.kind in ("static", "node"), t.id
+            assert t.tokens_format in ("css-vars", "tailwind4"), t.id
+            scaffold = root / t.id / "scaffold"
+            assert scaffold.is_dir(), t.id
+            assert (scaffold / t.tokens_path).exists(), f"{t.id}: tokens file"
+            if t.conventions_path:
+                assert (scaffold / t.conventions_path).exists(), t.id
+            for protected in t.protected_paths:
+                assert (scaffold / protected).exists(), f"{t.id}: {protected}"
+            if t.kind == "node":
+                assert t.install_cmd and t.build_cmd and t.output_dir, t.id
+                assert t.protected_paths, f"{t.id}: node template locks nothing"
+                # entry is served from output_dir after the build, so it is
+                # not necessarily present in the scaffold (e.g. Astro).
+                assert t.entry.endswith(".html"), t.id
+            else:
+                assert not t.install_cmd and not t.build_cmd and not t.output_dir, t.id
+                assert (scaffold / t.entry).exists(), f"{t.id}: entry file"
 
     def test_scaffold_copies_files(self, tmp_path):
         files = scaffold_workspace("static-multipage", tmp_path / "ws")
@@ -84,7 +118,33 @@ class TestTemplateRegistry:
         assert "styles/main.css" in files
         assert "scripts/main.js" in files
 
-    def test_conventions_wired_into_both_templates(self):
+        files = scaffold_workspace("astro", tmp_path / "ws-astro")
+        assert "package.json" in files
+        assert "astro.config.mjs" in files
+        assert "src/pages/index.astro" in files
+        assert "src/layouts/Base.astro" in files
+        assert "src/styles/tokens.css" in files
+        assert "public/uploads/.gitkeep" in files
+
+        files = scaffold_workspace("vite-vue-tailwind", tmp_path / "ws-vue")
+        assert "package.json" in files
+        assert "vite.config.js" in files
+        assert "src/main.js" in files
+        assert "src/router.js" in files
+        assert "src/App.vue" in files
+        assert "src/pages/Home.vue" in files
+        assert "src/styles/tokens.css" in files
+        assert "public/uploads/.gitkeep" in files
+
+        files = scaffold_workspace("static-tailwind", tmp_path / "ws-tw")
+        assert "index.html" in files
+        assert "about.html" in files
+        assert "styles/tokens.css" in files
+        assert "styles/main.css" in files
+        assert "scripts/main.js" in files
+        assert "uploads/.gitkeep" in files
+
+    def test_conventions_wired_into_templates(self):
         """Every template declares a conventions path, scaffolds the stub,
         and its styles entry loads it."""
         import pathlib
@@ -93,6 +153,9 @@ class TestTemplateRegistry:
         checks = {
             "static-multipage": ("scaffold/index.html",),
             "vite-react-tailwind": ("scaffold/src/index.css",),
+            "astro": ("scaffold/src/layouts/Base.astro",),
+            "vite-vue-tailwind": ("scaffold/src/index.css",),
+            "static-tailwind": ("scaffold/index.html",),
         }
         for tid, (ref_file,) in checks.items():
             t = find_template(tid)
@@ -103,6 +166,16 @@ class TestTemplateRegistry:
             assert "conventions.css" in (root / tid / ref_file).read_text(
                 encoding="utf-8"
             ), f"{tid}: {ref_file} does not load conventions.css"
+
+    def test_starter_prompts_schema(self):
+        """Every template ships well-formed starter prompts."""
+        from agentsite.templates import read_starter_prompts
+
+        for t in list_templates():
+            prompts = read_starter_prompts(t.id)
+            assert 2 <= len(prompts) <= 3, t.id
+            for p in prompts:
+                assert p["id"] and p["title"] and p["prompt"], t.id
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +213,20 @@ class TestTokensRenderer:
         assert rendered.lstrip("/* \n").startswith("Design tokens") or "@theme" in rendered
         missing = _declared_vars(scaffold_css) - _declared_vars(rendered)
         assert not missing, f"Renderer drops scaffold tokens: {missing}"
+
+    def test_renderer_covers_all_template_scaffolds(self):
+        """For EVERY template, the Designer-rendered tokens file must
+        re-declare every variable the scaffold's tokens file declares."""
+        import pathlib
+
+        root = pathlib.Path(__file__).parents[1] / "agentsite" / "templates"
+        for t in list_templates():
+            scaffold_css = (root / t.id / "scaffold" / t.tokens_path).read_text(
+                encoding="utf-8"
+            )
+            rendered = render_tokens_css(StyleSpec(), t.tokens_format)
+            missing = _declared_vars(scaffold_css) - _declared_vars(rendered)
+            assert not missing, f"{t.id}: renderer drops scaffold tokens: {missing}"
 
     def test_custom_spec_values_flow_through(self):
         spec = StyleSpec(primary_color="#ff0000", font_heading="Space Grotesk")
@@ -273,6 +360,18 @@ class TestWorkspaceManager:
         rel = ws_node.uploads_dir().relative_to(ws_node.workspace_dir)
         assert str(rel).replace("\\", "/") == "public/uploads"
 
+        # The new templates follow the same kind-based rule.
+        for i, tid in enumerate(("astro", "vite-vue-tailwind")):
+            ws = WorkspaceManager(tmp_path / f"node-{i}")
+            ws.scaffold(find_template(tid))
+            rel = ws.uploads_dir().relative_to(ws.workspace_dir)
+            assert str(rel).replace("\\", "/") == "public/uploads", tid
+
+        ws_tw = WorkspaceManager(tmp_path / "tw")
+        ws_tw.scaffold(find_template("static-tailwind"))
+        assert ws_tw.uploads_dir().parent == ws_tw.workspace_dir
+        assert ws_tw.uploads_dir().name == "uploads"
+
 
 # ---------------------------------------------------------------------------
 # Workspace tools (edit_file semantics, run_command gating)
@@ -336,6 +435,27 @@ class TestWorkspaceTools:
         assert "WARNING" in out
         assert "package.json" in ctx.deps["written_files"]
 
+    def test_write_file_warns_protected_new_node_templates(self, tmp_path):
+        """The astro and vue node templates protect their config files too."""
+        from agentsite.agents.workspace_tools import write_file
+
+        for i, (tid, protected) in enumerate((
+            ("astro", "astro.config.mjs"),
+            ("vite-vue-tailwind", "vite.config.js"),
+        )):
+            ws = WorkspaceManager(tmp_path / f"np-{i}")
+            template = find_template(tid)
+            ws.scaffold(template)
+            ctx = _Ctx({
+                "workspace_dir": ws.workspace_dir,
+                "template": template,
+                "written_files": [],
+            })
+            out = write_file(ctx, protected, ctx.deps["workspace_dir"]
+                             .joinpath(protected).read_text(encoding="utf-8"))
+            assert "WARNING" in out, tid
+            assert protected in ctx.deps["written_files"], tid
+
     @pytest.mark.asyncio
     async def test_run_command_gating(self, ctx):
         from agentsite.agents.workspace_tools import run_command
@@ -361,7 +481,13 @@ class TestProjectModeAPI:
         resp = await client.get("/api/templates")
         assert resp.status_code == 200
         ids = {t["id"] for t in resp.json()}
-        assert {"static-multipage", "vite-react-tailwind"} <= ids
+        assert {
+            "static-multipage",
+            "vite-react-tailwind",
+            "astro",
+            "vite-vue-tailwind",
+            "static-tailwind",
+        } <= ids
 
     @pytest.mark.asyncio
     async def test_create_project_mode_scaffolds_workspace(self, client):
@@ -426,6 +552,28 @@ class TestProjectModeAPI:
         resp = await client.get(f"/preview/{created['id']}/app/")
         assert resp.status_code == 200
         assert "not built yet" in resp.text.lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("template_id", ["astro", "vite-vue-tailwind"])
+    async def test_app_preview_placeholder_new_node_templates(self, client, template_id):
+        created = (await client.post("/api/projects", json={
+            "name": "Node", "mode": "project", "template_id": template_id,
+        })).json()
+        resp = await client.get(f"/preview/{created['id']}/app/")
+        assert resp.status_code == 200
+        assert "not built yet" in resp.text.lower()
+
+    @pytest.mark.asyncio
+    async def test_app_preview_serves_static_tailwind_workspace(self, client):
+        created = (await client.post("/api/projects", json={
+            "name": "TW", "mode": "project", "template_id": "static-tailwind",
+        })).json()
+        resp = await client.get(f"/preview/{created['id']}/app/")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        css = await client.get(f"/preview/{created['id']}/app/styles/tokens.css")
+        assert css.status_code == 200
+        assert "--color-primary" in css.text
 
     @pytest.mark.asyncio
     async def test_upload_lands_in_workspace(self, client):

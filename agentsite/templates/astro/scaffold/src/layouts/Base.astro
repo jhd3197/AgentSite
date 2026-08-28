@@ -1,0 +1,101 @@
+---
+import '../styles/tokens.css'
+import '../styles/main.css'
+import '../styles/conventions.css'
+
+// Shared site shell: every page is wrapped in this layout.
+// Adding/removing a page means updating the nav <ul> HERE ONLY.
+interface Props {
+  title: string
+  description?: string
+  current?: string
+}
+
+const {
+  title,
+  description = 'A new website built with AgentSite.',
+  current = '',
+} = Astro.props
+
+const navLinks = [
+  { href: 'index.html', label: 'Home', key: 'home' },
+  { href: 'about.html', label: 'About', key: 'about' },
+]
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} — My Site</title>
+    <meta name="description" content={description} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="container site-header__inner">
+        <a class="site-logo" href="index.html">My Site</a>
+        <button
+          class="nav-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="site-nav"
+          aria-label="Toggle navigation"
+        >
+          <span class="nav-toggle__bar"></span>
+          <span class="nav-toggle__bar"></span>
+          <span class="nav-toggle__bar"></span>
+        </button>
+        <nav id="site-nav" class="site-nav" aria-label="Main navigation">
+          <ul class="site-nav__list">
+            {
+              navLinks.map((link) => (
+                <li>
+                  <a
+                    class:list={['site-nav__link', { 'is-active': current === link.key }]}
+                    href={link.href}
+                    aria-current={current === link.key ? 'page' : undefined}
+                  >
+                    {link.label}
+                  </a>
+                </li>
+              ))
+            }
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <slot />
+    </main>
+
+    <footer class="site-footer">
+      <div class="container site-footer__inner">
+        <p>&copy; 2026 My Site. All rights reserved.</p>
+      </div>
+    </footer>
+
+    <script is:inline>
+      // Mobile nav toggle. Keep the aria-expanded wiring intact when editing
+      // the header. is:inline keeps this script inline so it works from any
+      // subpath without an extra asset request.
+      ;(function () {
+        var toggle = document.querySelector('.nav-toggle')
+        var nav = document.getElementById('site-nav')
+        if (toggle && nav) {
+          toggle.addEventListener('click', function () {
+            var isOpen = nav.classList.toggle('is-open')
+            toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
+          })
+        }
+      })()
+    </script>
+  </body>
+</html>

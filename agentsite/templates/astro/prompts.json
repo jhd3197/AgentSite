@@ -1,0 +1,17 @@
+[
+  {
+    "id": "restaurant",
+    "title": "Neighborhood restaurant",
+    "prompt": "Build a five-page site for Alba Trattoria, a family-run Italian restaurant: Home, Menu, Our Story, Reservations, and Contact. The home page needs a warm hero with the tagline \"Cucina di casa since 1987\", a highlights strip of three signature dishes, and an hours/location section. The Menu page should group dishes by course with prices. Use an old-world palette — cream, deep olive, terracotta — and keep every page on the shared layout."
+  },
+  {
+    "id": "nonprofit",
+    "title": "Community nonprofit",
+    "prompt": "Create a website for Bright Blocks, a nonprofit running after-school programs, with Home, Programs, Impact, Volunteer, and Donate pages. Present the three programs as cards with age ranges and schedules, and give the Impact page a stats row (kids served, meals provided, volunteer hours) plus two short success stories. Keep the tone hopeful and friendly: soft yellow accent on white, rounded corners, a prominent Donate button in the header of every page."
+  },
+  {
+    "id": "agency-site",
+    "title": "Design agency site",
+    "prompt": "Build a site for Fieldwork Studio, a four-person brand design agency, with Home, Work, Services, and Contact pages. The Work page should be a case-study list with large image placeholders and one-line outcomes; Services should present four offerings with short descriptions and starting prices. Editorial look: generous white space, oversized headings, black and white with a single red accent."
+  }
+]
