@@ -15,6 +15,21 @@ logger = logging.getLogger("agentsite.api.preview")
 
 router = APIRouter(prefix="/preview", tags=["preview"])
 
+# Root-level routes for watcher support assets. Registered separately because
+# they must live OUTSIDE the /preview prefix — injected scripts resolve them
+# from arbitrary depths like /preview/{id}/app/ or /preview/{id}/{slug}/v/1/.
+root_router = APIRouter(tags=["preview"])
+
+_AXE_PATH = Path(__file__).resolve().parent.parent.parent / "assets" / "vendor" / "axe.min.js"
+
+
+@root_router.get("/_agentsite/axe.min.js")
+async def serve_axe():
+    """Serve the vendored axe-core used by the injected a11y scanner."""
+    if not _AXE_PATH.exists():
+        raise HTTPException(status_code=404, detail="axe-core not vendored")
+    return FileResponse(_AXE_PATH, media_type="application/javascript")
+
 # MIME type mapping
 _MIME_TYPES = {
     ".html": "text/html",

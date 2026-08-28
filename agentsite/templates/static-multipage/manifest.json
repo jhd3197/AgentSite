@@ -10,6 +10,7 @@
   "entry": "index.html",
   "tokens_path": "styles/tokens.css",
   "tokens_format": "css-vars",
+  "conventions_path": "styles/conventions.css",
   "protected_paths": [],
   "requires_tools": true
 }

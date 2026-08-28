@@ -43,6 +43,13 @@ export default function PageBuilderPage() {
   const [saveComponentOpen, setSaveComponentOpen] = useState(false);
   const [projectComponents, setProjectComponents] = useState([]);
   const [forceDiscovery, setForceDiscovery] = useState(false); // "Create new design" trigger
+  const [progressive, setProgressive] = useState(
+    () => localStorage.getItem("agentsite:progressive-build") === "1"
+  );
+
+  useEffect(() => {
+    localStorage.setItem("agentsite:progressive-build", progressive ? "1" : "0");
+  }, [progressive]);
 
   // Fetch project component library on mount + when projectId changes.
   useEffect(() => {
@@ -155,6 +162,7 @@ export default function PageBuilderPage() {
       s.errors && `${s.errors} JS error${s.errors > 1 ? "s" : ""}`,
       s.requests && `${s.requests} broken request${s.requests > 1 ? "s" : ""}`,
       s.friction && `${s.friction} dead click${s.friction > 1 ? "s" : ""}`,
+      s.a11y && `${s.a11y} accessibility violation${s.a11y > 1 ? "s" : ""}`,
     ].filter(Boolean);
     const text = `Fix the issues I hit while clicking around the live preview: ${bits.join(", ")}.`;
 
@@ -202,6 +210,7 @@ export default function PageBuilderPage() {
     const payload = { prompt: text, model };
     if (brief) payload.discovery_brief = brief;
     if (directionId) payload.direction_id = directionId;
+    if (progressive) payload.strategy = "progressive";
     gen.start(slug, payload);
   };
 
@@ -450,6 +459,20 @@ export default function PageBuilderPage() {
           editSelection={visualEdit.selection}
           editSelections={visualEdit.selections}
           onCreateNewDesign={handleCreateNewDesign}
+          aboveInput={
+            <label
+              className="flex items-center gap-2 px-4 py-2 border-t border-slate-800/70 text-[11px] text-slate-500 hover:text-slate-300 cursor-pointer select-none transition-colors"
+              title="Layout first, then sections stream in"
+            >
+              <input
+                type="checkbox"
+                checked={progressive}
+                onChange={(e) => setProgressive(e.target.checked)}
+                className="accent-brand-500 w-3 h-3"
+              />
+              Progressive build
+            </label>
+          }
           discoveryForm={
             pendingBrief || forceDiscovery ? (
               <DiscoveryForm

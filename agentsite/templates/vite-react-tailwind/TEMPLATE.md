@@ -24,8 +24,9 @@ Follow it exactly so dev, build, preview, and exports keep working.
 | `src/App.jsx`            | HashRouter + `<Routes>` wrapped by SiteHeader/SiteFooter. Routes are registered here. |
 | `src/pages/`             | One file per routed page (`Home.jsx`, `Pricing.jsx`, ...).            |
 | `src/components/`        | Shared UI (SiteHeader, SiteFooter, cards, buttons, ...).              |
-| `src/index.css`          | Imports Tailwind, then the tokens file. Rarely needs changes.         |
+| `src/index.css`          | Imports Tailwind, then the tokens file, then conventions. Rarely needs changes. |
 | `src/styles/tokens.css`  | Tailwind 4 `@theme` design tokens. The Designer agent owns this file. |
+| `src/styles/conventions.css` | AgentSite house system (platform-owned): `.ph` image-placeholder blocks, `[data-reveal]`/`[data-reveal-group]` load choreography, focus rings. Use its classes; never edit it. |
 | `public/uploads/`        | User-uploaded files, copied verbatim into the build.                  |
 | `public/`                | Other static assets that should ship unprocessed.                     |
 
@@ -47,6 +48,13 @@ A page missing any step is broken: unreachable, unrouted, or invisible in the na
 - Design tokens (colors, fonts, radii) live ONLY in the `@theme` block of
   `src/styles/tokens.css`. Never hardcode hex values in JSX or CSS; if a needed
   token is missing, add it to that file's `@theme` block.
+- Use the house system from `src/styles/conventions.css` (platform-owned,
+  regenerated per generation — do not edit it):
+  - Missing/placeholder images: a `<div className="ph">` block (optionally with
+    an inner caption) — never an empty gray box or broken `<img>`.
+  - Page-load entrance: `data-reveal-group` on a hero/section container staggers
+    its direct children; single elements take `data-reveal`.
+  - Focus rings and selection color come from it — keep them intact.
 - Use `Link` (or `NavLink`) from react-router-dom for internal navigation —
   never a raw `<a href>` for in-app routes.
 

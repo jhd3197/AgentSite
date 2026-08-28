@@ -186,6 +186,47 @@ class StyleSpec(BaseModel):
     transition_speed: str = Field(default="150ms", description="Default transition duration")
     backdrop_blur: str = Field(default="8px", description="Backdrop blur amount")
 
+    # Design personality — anti-"AI slop" fields. These carry the Designer's
+    # aesthetic thesis so every downstream agent builds THIS site, not a
+    # generic one. Empty strings mean "not specified"; conventions.css and
+    # the developer personas treat them as binding when set.
+    aesthetic_direction: str = Field(
+        default="",
+        description=(
+            "Named tone + one-sentence thesis, e.g. "
+            "'editorial ink — broadsheet grid, serif display, hairline rules'."
+        ),
+    )
+    signature_element: str = Field(
+        default="",
+        description=(
+            "The ONE element this site is remembered by — a hero treatment, "
+            "motif, texture, or interaction described in one sentence."
+        ),
+    )
+    motion_language: str = Field(
+        default="",
+        description=(
+            "Motion budget: ONE orchestrated page-load choreography plus "
+            "purposeful hover/focus transitions, e.g. 'staggered fade-up on "
+            "load, 90ms steps'."
+        ),
+    )
+    background_treatment: str = Field(
+        default="",
+        description=(
+            "Background depth recipe — layered gradients, geometric pattern, "
+            "or grain tinted from the palette. Never a flat solid color."
+        ),
+    )
+    placeholder_style: str = Field(
+        default="stripes",
+        description=(
+            "House image-placeholder pattern rendered into conventions.css: "
+            "stripes | crosshatch | dots | mesh | blueprint."
+        ),
+    )
+
     # Phase 9 — design-system inheritance
     inherits_from: str | None = Field(
         default=None,

@@ -16,6 +16,7 @@ Follow it exactly so the preview, exports, and future edits keep working.
 | ------------------- | ------------------------------------------------------------------------ |
 | `*.html` (root)     | One file per page: `index.html`, `about.html`, `contact.html`, ...        |
 | `styles/tokens.css` | Design tokens (CSS custom properties). The Designer agent owns this file. |
+| `styles/conventions.css` | AgentSite house system (platform-owned): `.ph` image-placeholder blocks, `[data-reveal]`/`[data-reveal-group]` load choreography, focus rings. Use its classes; never edit it. |
 | `styles/main.css`   | All site styles. Consumes tokens via `var(--...)` only.                   |
 | `scripts/main.js`   | Sitewide JS: mobile nav toggle + current-page nav highlighting.           |
 | `scripts/*.js`      | Additional page-specific scripts if needed (vanilla JS only).             |
@@ -31,7 +32,7 @@ Follow it exactly so the preview, exports, and future edits keep working.
   in lockstep everywhere if they ever change.
 - Adding or removing a page means updating the nav `<ul>` on ALL pages, not just one.
 - Every page includes, in this order: `styles/tokens.css`, then `styles/main.css`,
-  then `<script src="scripts/main.js" defer></script>`.
+  then `styles/conventions.css`, then `<script src="scripts/main.js" defer></script>`.
 - Keep `lang="en"`, the viewport meta, and a unique, descriptive `<title>` per page.
 
 ### Styling
@@ -39,6 +40,13 @@ Follow it exactly so the preview, exports, and future edits keep working.
   spacing, radii, shadows. The Designer agent rewrites it; do not fight its values.
 - `main.css` must consume tokens only: `color: var(--color-text)`, never `#1f2937`.
   If a token you need does not exist, use the closest existing one.
+- `styles/conventions.css` is platform-owned and regenerated per generation.
+  Use its classes instead of hand-rolling equivalents:
+  - Missing/placeholder images: a `<div class="ph">` block (optionally with an
+    inner caption) — never an empty gray box or broken `<img>`.
+  - Page-load entrance: `data-reveal-group` on a hero/section container staggers
+    its direct children; single elements take `data-reveal`.
+  - Focus rings and selection color come from it — keep them intact.
 - Mobile-first: base styles target small screens; enhance inside
   `@media (min-width: 768px)`.
 

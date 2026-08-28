@@ -37,6 +37,7 @@ class TemplateInfo(BaseModel):
     entry: str = "index.html"
     tokens_path: str = "styles/tokens.css"  # where Designer tokens get written
     tokens_format: str = "css-vars"  # "css-vars" | "tailwind4"
+    conventions_path: str | None = None  # AgentSite house stylesheet (.ph, reveals)
     protected_paths: list[str] = Field(default_factory=list)
     requires_tools: bool = True
 

@@ -46,7 +46,7 @@ from ..templates import find_template, read_template_doc
 from . import triage as triage_mod
 from . import verifier
 from .project_manager import ProjectManager
-from .tokens import render_tokens_css
+from .tokens import render_conventions_css, render_tokens_css
 from .workspace import WorkspaceManager
 from .workspace_runner import build_workspace
 
@@ -579,6 +579,9 @@ class ProjectGenerationPipeline:
                 tokens_css = render_tokens_css(spec, template.tokens_format)
                 ws.write_file(template.tokens_path, tokens_css)
                 _on_file_written(template.tokens_path)
+                if template.conventions_path:
+                    ws.write_file(template.conventions_path, render_conventions_css(spec))
+                    _on_file_written(template.conventions_path)
                 _checkpoint(f"v{version_number}: design tokens")
 
             if cancel_event and cancel_event.is_set():
@@ -664,6 +667,13 @@ class ProjectGenerationPipeline:
                 (
                     f"## Design tokens\nAlready written to `{template.tokens_path}` by the "
                     "Designer. Consume these variables everywhere; never hardcode colors/fonts."
+                )
+                + (
+                    f"\n\n## House conventions\n`{template.conventions_path}` defines the shared "
+                    "details: .ph image placeholders, [data-reveal] load choreography, focus "
+                    "rings. Use these classes; never rewrite that file."
+                    if template.conventions_path
+                    else ""
                 ),
                 uploads_listing,
                 (f"## Conversation context\n{conversation_context}" if conversation_context else ""),
@@ -677,6 +687,7 @@ class ProjectGenerationPipeline:
             success = True
             verify_ok: bool | None = None
             last_verify_report: verifier.VerifyReport | None = None
+            last_budget_report = None
 
             for cycle in range(1, max_cycles + 1):
                 try:
@@ -786,6 +797,38 @@ class ProjectGenerationPipeline:
                     approved = True
                     break
 
+                # -- perf/a11y budgets (optional hard gate) --
+                last_budget_report = None
+                if settings.budget_enabled:
+                    from . import budgets as budgets_mod
+
+                    budget_serve_root = (
+                        ws.workspace_dir / (template.output_dir or "dist")
+                        if template.kind == "node"
+                        else ws.workspace_dir
+                    )
+                    lh_routes, _missing = verifier.plan_routes(template, site_plan, budget_serve_root)
+                    await self._emit("budget_started", data={})
+                    brep = await budgets_mod.run_budgets(
+                        budget_serve_root, lh_routes, ws.workspace_dir, version_number,
+                    )
+                    last_budget_report = brep
+                    await self._emit("budget_report", data={
+                        "ok": brep.ok,
+                        "skipped": brep.skipped,
+                        "skip_reason": brep.skip_reason,
+                        "summary": brep.render_summary(),
+                        "duration_s": brep.duration_s,
+                        "routes": [r.model_dump() for r in brep.routes],
+                        "failures": [f.model_dump() for f in brep.failures],
+                    })
+                    if not budgets_mod.evaluate_gate(brep):
+                        if cycle == max_cycles:
+                            approved = False
+                            break
+                        dev_prompt = brep.render_feedback()
+                        continue
+
                 # -- review --
                 reviewer_model = self._agent_models["reviewer"]
                 reviewer_agent = AsyncAgent(
@@ -819,6 +862,11 @@ class ProjectGenerationPipeline:
                     f"{self.site_plan_text}\n\n"
                     f"Original user brief:\n{page_prompt}\n"
                     + verify_note
+                    + (
+                        f"\nPerf/a11y budgets: {last_budget_report.render_summary()}\n"
+                        if last_budget_report is not None and not last_budget_report.skipped
+                        else ""
+                    )
                     + (
                         "\nScreenshots of the RENDERED site (desktop first, then mobile) "
                         "are attached — judge the visual result from them: layout, "

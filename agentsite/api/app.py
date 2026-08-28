@@ -25,6 +25,7 @@ from .routes import (
     discovery,
     edit,
     generate,
+    importer,
     memory,
     models,
     preview,
@@ -135,6 +136,7 @@ def create_app(
     app.include_router(models.router)
     app.include_router(assets.router)
     app.include_router(preview.router)
+    app.include_router(preview.root_router)
     app.include_router(providers.router)
     app.include_router(agents.router)
     app.include_router(discovery.router)
@@ -147,6 +149,7 @@ def create_app(
     app.include_router(edit.router)
     app.include_router(components.router)
     app.include_router(templates.router)
+    app.include_router(importer.router)
 
     # Extra routers (e.g. auth, landing page)
     if extra_routers:

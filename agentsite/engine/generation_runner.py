@@ -14,6 +14,7 @@ from typing import Any
 
 from ..api.websocket import ws_manager
 from ..engine.pipeline import GenerationPipeline
+from ..engine.progressive import ProgressivePipeline
 from ..engine.project_manager import ProjectManager
 from ..models import AgentConfig, Page, PageVersion, WSEvent
 from ..storage.repository import (
@@ -44,6 +45,7 @@ async def start_generation_task(
     budget_policy: str | None = None,
     provider_keys: dict[str, str] | None = None,
     discovery_brief: dict | None = None,
+    strategy: str | None = None,
     direction_id: str | None = None,
     inherits_from: str | None = None,
     watch_feedback: list[dict] | None = None,
@@ -137,6 +139,13 @@ async def start_generation_task(
         from ..engine.project_pipeline import ProjectGenerationPipeline
 
         pipeline = ProjectGenerationPipeline(
+            pm,
+            on_event=on_event,
+            agent_configs=agent_configs,
+            provider_keys=merged_provider_keys or None,
+        )
+    elif strategy == "progressive":
+        pipeline = ProgressivePipeline(
             pm,
             on_event=on_event,
             agent_configs=agent_configs,

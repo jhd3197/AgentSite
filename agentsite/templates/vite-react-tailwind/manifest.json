@@ -10,6 +10,7 @@
   "entry": "index.html",
   "tokens_path": "src/styles/tokens.css",
   "tokens_format": "tailwind4",
+  "conventions_path": "src/styles/conventions.css",
   "protected_paths": ["package.json", "vite.config.js", "index.html"],
   "requires_tools": true
 }

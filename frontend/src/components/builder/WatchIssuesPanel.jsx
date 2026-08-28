@@ -5,6 +5,7 @@ import {
   CursorClick,
   LinkBreak,
   Repeat,
+  PersonSimpleCircle,
   X,
   CaretUp,
   PaperPlaneRight,
@@ -18,14 +19,20 @@ const TYPE_META = {
   failed_resource: { label: "Broken asset", icon: LinkBreak, tone: "text-amber-400 bg-amber-500/10 border-amber-500/30" },
   dead_click: { label: "Dead click", icon: CursorClick, tone: "text-purple-400 bg-purple-500/10 border-purple-500/30" },
   repeat_click: { label: "Repeated clicks", icon: Repeat, tone: "text-purple-400 bg-purple-500/10 border-purple-500/30" },
+  a11y_violation: { label: "A11y", icon: PersonSimpleCircle, tone: "text-cyan-400 bg-cyan-500/10 border-cyan-500/30" },
 };
 
+const ERROR_TYPES = ["js_error", "promise_rejection", "console_error"];
+const REQUEST_TYPES = ["failed_request", "failed_resource"];
+const FRICTION_TYPES = ["dead_click", "repeat_click"];
+
 export function issueSummary(issues) {
-  const counts = { errors: 0, requests: 0, friction: 0 };
+  const counts = { errors: 0, requests: 0, friction: 0, a11y: 0 };
   for (const i of issues) {
-    if (["js_error", "promise_rejection", "console_error"].includes(i.type)) counts.errors++;
-    else if (["failed_request", "failed_resource"].includes(i.type)) counts.requests++;
-    else counts.friction++;
+    if (ERROR_TYPES.includes(i.type)) counts.errors++;
+    else if (REQUEST_TYPES.includes(i.type)) counts.requests++;
+    else if (FRICTION_TYPES.includes(i.type)) counts.friction++;
+    else if (i.type === "a11y_violation") counts.a11y++;
   }
   return counts;
 }
@@ -44,6 +51,7 @@ export default function WatchIssuesPanel({ issues, onSend, onDismiss, disabled }
     summary.errors && `${summary.errors} error${summary.errors > 1 ? "s" : ""}`,
     summary.requests && `${summary.requests} broken request${summary.requests > 1 ? "s" : ""}`,
     summary.friction && `${summary.friction} dead click${summary.friction > 1 ? "s" : ""}`,
+    summary.a11y && `${summary.a11y} a11y`,
   ].filter(Boolean);
 
   return (

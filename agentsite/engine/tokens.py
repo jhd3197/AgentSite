@@ -93,3 +93,188 @@ def _render_tailwind4(spec: StyleSpec) -> str:
     ]
     body = "\n".join(f"  {name}: {value};" for name, value in pairs)
     return f"{_HEADER}@theme {{\n{body}\n}}\n"
+
+
+# ---------------------------------------------------------------------------
+# House conventions — the AgentSite fingerprint (placeholders, load
+# choreography, focus rings). Rendered from the StyleSpec so every site gets
+# the same class names and behavior, tinted by that site's own tokens.
+# ---------------------------------------------------------------------------
+
+_PLACEHOLDER_PATTERNS: dict[str, str] = {
+    "stripes": (
+        "repeating-linear-gradient(-45deg, transparent 0 10px,"
+        " var(--as-ph-ink) 10px 12px)"
+    ),
+    "crosshatch": (
+        "repeating-linear-gradient(45deg, transparent 0 10px,"
+        " var(--as-ph-ink) 10px 11px),"
+        "\n    repeating-linear-gradient(-45deg, transparent 0 10px,"
+        " var(--as-ph-ink) 10px 11px)"
+    ),
+    "dots": (
+        "radial-gradient(var(--as-ph-ink) 1.5px, transparent 1.6px)"
+    ),
+    "mesh": (
+        "radial-gradient(ellipse at 18% 24%, var(--as-ph-accent), transparent 55%),"
+        "\n    radial-gradient(ellipse at 82% 74%, var(--as-ph-ink), transparent 60%),"
+        "\n    radial-gradient(ellipse at 64% 16%, var(--as-ph-soft), transparent 50%)"
+    ),
+    "blueprint": (
+        "linear-gradient(var(--as-ph-line) 1px, transparent 1px),"
+        "\n    linear-gradient(90deg, var(--as-ph-line) 1px, transparent 1px),"
+        "\n    linear-gradient(var(--as-ph-ink) 1px, transparent 1px),"
+        "\n    linear-gradient(90deg, var(--as-ph-ink) 1px, transparent 1px)"
+    ),
+}
+
+_CONVENTIONS_HEADER = (
+    "/* AgentSite house conventions — generated from this project's StyleSpec.\n"
+    "   The shared details every AgentSite site ships with: image-placeholder\n"
+    "   patterns (.ph--*), one orchestrated page-load choreography\n"
+    "   ([data-reveal] / [data-reveal-group]), focus rings, selection color.\n"
+    "   Platform-owned file: USE these classes; never rewrite this file.\n */\n\n"
+)
+
+
+def _conventions_notes(spec: StyleSpec) -> str:
+    """Self-documenting header comments from the Designer's personality fields."""
+    notes = [
+        ("Direction", spec.aesthetic_direction),
+        ("Signature element", spec.signature_element),
+        ("Motion", spec.motion_language),
+        ("Backgrounds", spec.background_treatment),
+    ]
+    lines = [f"   {label}: {value}" for label, value in notes if value.strip()]
+    if not lines:
+        return ""
+    joined = "\n".join(lines)
+    return f"/*{joined}\n\n*/\n"
+
+
+def _stagger_ms(transition_speed: str) -> int:
+    """Derive the reveal-stagger step (60-140ms) from the token speed."""
+    raw = transition_speed.strip().lower()
+    try:
+        if raw.endswith("ms"):
+            ms = float(raw[:-2])
+        elif raw.endswith("s"):
+            ms = float(raw[:-1]) * 1000
+        else:
+            ms = float(raw)
+    except ValueError:
+        ms = 150.0
+    return max(60, min(int(ms), 140))
+
+
+def render_conventions_css(spec: StyleSpec) -> str:
+    """Render the AgentSite conventions stylesheet for a StyleSpec.
+
+    Consumes ONLY ``var(--color-*)`` / ``var(--radius-*)`` tokens, so it works
+    unchanged in both template formats (css-vars and tailwind4 — Tailwind 4's
+    ``@theme`` also emits custom properties on :root).
+    """
+    chosen = spec.placeholder_style.strip().lower()
+    if chosen not in _PLACEHOLDER_PATTERNS:
+        chosen = "stripes"
+
+    parts: list[str] = [_CONVENTIONS_HEADER, _conventions_notes(spec)]
+
+    parts.append(
+        ":root {\n"
+        "  --as-ph-ink: color-mix(in oklab, var(--color-text) 14%, transparent);\n"
+        "  --as-ph-line: color-mix(in oklab, var(--color-text) 8%, transparent);\n"
+        "  --as-ph-soft: color-mix(in oklab, var(--color-primary) 30%, transparent);\n"
+        "  --as-ph-accent: color-mix(in oklab, var(--color-primary) 55%, transparent);\n"
+        f"  --as-stagger: {_stagger_ms(spec.transition_speed)}ms;\n"
+        "}\n\n"
+    )
+
+    # -- image placeholders ---------------------------------------------------
+    ph = [
+        "/* ---------- Image placeholders ----------",
+        "   Never ship an empty gray box: give missing art a .ph block.",
+        f"   This site's house pattern: .ph--{chosen} (from StyleSpec.placeholder_style). */",
+        "",
+        ".ph {",
+        "  position: relative;",
+        "  overflow: hidden;",
+        "  min-height: 12rem;",
+        "  background-color: var(--color-surface);",
+        f"  background-image: {_PLACEHOLDER_PATTERNS[chosen]};",
+    ]
+    if chosen == "dots":
+        ph.append("  background-size: 16px 16px;")
+    if chosen == "blueprint":
+        ph.append("  background-size: 96px 96px, 96px 96px, 24px 24px, 24px 24px;")
+    ph += [
+        "  border: var(--border-width) dashed var(--as-ph-ink);",
+        "  border-radius: var(--radius-md);",
+        "}",
+        "",
+        ".ph > * {",
+        "  position: relative;",
+        "  z-index: 1;",
+        "}",
+    ]
+    for name, pattern in _PLACEHOLDER_PATTERNS.items():
+        if name == chosen:
+            continue
+        ph += ["", f".ph--{name} {{", f"  background-image: {pattern};"]
+        if name == "dots":
+            ph.append("  background-size: 16px 16px;")
+        if name == "blueprint":
+            ph.append("  background-size: 96px 96px, 96px 96px, 24px 24px, 24px 24px;")
+        ph.append("}")
+    parts.append("\n".join(ph) + "\n\n")
+
+    # -- page-load choreography ----------------------------------------------
+    parts.append(
+        "/* ---------- Page-load choreography ----------\n"
+        "   ONE orchestrated entrance, per the motion budget. Tag a hero or\n"
+        "   above-the-fold container with data-reveal-group to stagger its direct\n"
+        "   children, or single elements with data-reveal. CSS-only, runs once. */\n"
+        "\n"
+        "@keyframes as-rise {\n"
+        "  from { opacity: 0; transform: translateY(14px); }\n"
+        "  to   { opacity: 1; transform: none; }\n"
+        "}\n"
+        "\n"
+        "[data-reveal],\n"
+        "[data-reveal-group] > * {\n"
+        "  animation: as-rise 600ms cubic-bezier(0.22, 1, 0.36, 1) backwards;\n"
+        "}\n"
+        "\n"
+        "[data-reveal-group] > *:nth-child(2) { animation-delay: calc(1 * var(--as-stagger)); }\n"
+        "[data-reveal-group] > *:nth-child(3) { animation-delay: calc(2 * var(--as-stagger)); }\n"
+        "[data-reveal-group] > *:nth-child(4) { animation-delay: calc(3 * var(--as-stagger)); }\n"
+        "[data-reveal-group] > *:nth-child(5) { animation-delay: calc(4 * var(--as-stagger)); }\n"
+        "[data-reveal-group] > *:nth-child(6) { animation-delay: calc(5 * var(--as-stagger)); }\n"
+        "[data-reveal-group] > *:nth-child(7) { animation-delay: calc(6 * var(--as-stagger)); }\n"
+        "[data-reveal-group] > *:nth-child(8) { animation-delay: calc(7 * var(--as-stagger)); }\n"
+        "[data-reveal-group] > *:nth-child(n+9) { animation-delay: calc(7 * var(--as-stagger)); }\n"
+        "\n"
+        "@media (prefers-reduced-motion: reduce) {\n"
+        "  [data-reveal],\n"
+        "  [data-reveal-group] > * {\n"
+        "    animation: none;\n"
+        "  }\n"
+        "}\n\n"
+    )
+
+    # -- focus + selection ----------------------------------------------------
+    parts.append(
+        "/* ---------- Focus & selection ---------- */\n"
+        "\n"
+        ":focus-visible {\n"
+        "  outline: 2px solid var(--color-primary);\n"
+        "  outline-offset: 3px;\n"
+        "}\n"
+        "\n"
+        "::selection {\n"
+        "  background-color: var(--as-ph-accent);\n"
+        "  color: var(--color-bg);\n"
+        "}\n"
+    )
+
+    return "".join(parts)

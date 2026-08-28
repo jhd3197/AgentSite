@@ -55,6 +55,21 @@ class Settings(BaseSettings):
     # (JS errors, failed requests, dead clicks). Feedback flows back into the
     # next generation as structured watch_feedback.
     watch_enabled: bool = True
+    a11y_scan_enabled: bool = True  # run vendored axe-core inside previews
+
+    # Perf/a11y budgets (project mode) — Lighthouse per route after the build.
+    # Off by default: first run downloads lighthouse via npx and adds ~20s/route.
+    budget_enabled: bool = False
+    budget_timeout_s: int = 120  # per-route lighthouse run
+    budget_max_routes: int = 4  # entry pages only; lighthouse is slow
+    # Category floors (0..1). 0 disables that floor's gate.
+    budget_floors: dict[str, float] = {
+        "performance": 0.5,
+        "accessibility": 0.9,
+        "best-practices": 0.0,
+        "seo": 0.0,
+    }
+    budget_regression_threshold: float = 0.05  # score drop vs previous version
 
     # Phase E — triage routing + specialist delegation (project mode)
     triage_enabled: bool = True  # scope follow-up builds (tweak/partial/full)
