@@ -25,6 +25,12 @@ export const createPage = (projectId, data) =>
 export const getPage = (projectId, slug) =>
   fetchJSON(`/api/projects/${projectId}/pages/${slug}`);
 
+export const updatePage = (projectId, slug, data) =>
+  fetchJSON(`/api/projects/${projectId}/pages/${slug}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+
 export const deletePage = (projectId, slug) =>
   fetchJSON(`/api/projects/${projectId}/pages/${slug}`, { method: "DELETE" });
 

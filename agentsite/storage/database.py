@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS pages (
     slug TEXT NOT NULL,
     title TEXT NOT NULL DEFAULT '',
     prompt TEXT NOT NULL DEFAULT '',
+    layout_overrides TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE(project_id, slug)
@@ -239,6 +240,14 @@ class Database:
         if columns and "template_id" not in columns:
             logger.info("Adding 'template_id' column to projects table...")
             await self._conn.execute("ALTER TABLE projects ADD COLUMN template_id TEXT")
+            await self._conn.commit()
+
+        # Per-page layout overrides — add layout_overrides to pages
+        cursor = await self._conn.execute("PRAGMA table_info(pages)")
+        page_columns = {row[1] for row in await cursor.fetchall()}
+        if page_columns and "layout_overrides" not in page_columns:
+            logger.info("Adding 'layout_overrides' column to pages table...")
+            await self._conn.execute("ALTER TABLE pages ADD COLUMN layout_overrides TEXT")
             await self._conn.commit()
 
         # Phase 13 — add strategy + model columns to agent_runs if missing

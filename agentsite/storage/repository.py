@@ -163,14 +163,15 @@ class PageRepository:
     async def create(self, page: Page) -> Page:
         """Insert a new page."""
         await self._db.conn.execute(
-            """INSERT INTO pages (id, project_id, slug, title, prompt, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO pages (id, project_id, slug, title, prompt, layout_overrides, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 page.id,
                 page.project_id,
                 page.slug,
                 page.title,
                 page.prompt,
+                json.dumps(page.layout_overrides) if page.layout_overrides else None,
                 page.created_at,
                 page.updated_at,
             ),
@@ -208,8 +209,15 @@ class PageRepository:
         """Update a page."""
         page.updated_at = datetime.now(timezone.utc).isoformat()
         await self._db.conn.execute(
-            """UPDATE pages SET slug=?, title=?, prompt=?, updated_at=? WHERE id=?""",
-            (page.slug, page.title, page.prompt, page.updated_at, page.id),
+            """UPDATE pages SET slug=?, title=?, prompt=?, layout_overrides=?, updated_at=? WHERE id=?""",
+            (
+                page.slug,
+                page.title,
+                page.prompt,
+                json.dumps(page.layout_overrides) if page.layout_overrides else None,
+                page.updated_at,
+                page.id,
+            ),
         )
         await self._db.conn.commit()
 
@@ -227,12 +235,21 @@ class PageRepository:
 
     @staticmethod
     def _row_to_page(row: Any) -> Page:
+        layout_overrides = None
+        try:
+            raw = row["layout_overrides"]
+            if raw:
+                layout_overrides = json.loads(raw)
+        except (KeyError, IndexError):
+            pass  # column may not exist in old DBs before migration runs
+
         return Page(
             id=row["id"],
             project_id=row["project_id"],
             slug=row["slug"],
             title=row["title"],
             prompt=row["prompt"],
+            layout_overrides=layout_overrides,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

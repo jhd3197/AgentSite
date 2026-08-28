@@ -452,12 +452,16 @@ class ProgressivePipeline:
         max_cost: float | None = None,
         budget_policy: str | None = None,
         discovery_brief: DiscoveryBrief | None = None,
+        layout_overrides: dict | None = None,
         **kwargs: Any,
     ) -> GroupResult:
         """Run the progressive pipeline for a single page version.
 
-        Extra kwargs are accepted (and ignored) for forward compatibility
-        with :meth:`GenerationPipeline.generate`.
+        ``layout_overrides`` is a per-page partial StyleSpec dict merged over
+        the resolved spec for this page's briefs only (the project spec and
+        ``self.style_spec_text`` stay untouched). Extra kwargs are accepted
+        (and ignored) for forward compatibility with
+        :meth:`GenerationPipeline.generate`.
         """
         model = project.model or settings.default_model
         version_dir = self._pm.ensure_version_dir(project.id, slug, version_number)
@@ -597,6 +601,26 @@ class ProgressivePipeline:
                 style_spec_text = (
                     project.style_spec.model_dump_json() if project.style_spec else StyleSpec().model_dump_json()
                 )
+
+            # Per-page layout overrides: merge over the resolved spec for this
+            # page's layout/section briefs only. self.style_spec_text keeps the
+            # Designer output verbatim (it is persisted project-wide).
+            if layout_overrides:
+                try:
+                    from prompture import clean_json_text as _cjt_lo
+
+                    from ..models import effective_style_spec
+
+                    _base_spec = StyleSpec.model_validate(json.loads(_cjt_lo(style_spec_text)))
+                    style_spec_text = effective_style_spec(_base_spec, layout_overrides).model_dump_json()
+                    logger.info(
+                        "Applied %d layout override(s) for page '%s': %s",
+                        len(layout_overrides), slug, sorted(layout_overrides),
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to apply layout overrides for page '%s'", slug, exc_info=True
+                    )
 
             # --- Stage C1: Layout skeleton → immediate first preview ---
             await self._emit("phase_start", data={"phase": "layout", "slug": slug, "version": version_number})

@@ -217,6 +217,7 @@ async def start_generation_task(
                 max_cost=max_cost,
                 budget_policy=budget_policy,
                 discovery_brief=brief,
+                layout_overrides=page.layout_overrides,
             )
             if pipeline.style_spec_text:
                 try:

@@ -243,6 +243,7 @@ class GenerationPipeline:
         cancel_event: asyncio.Event | None = None,
         conversation_context: str = "",
         discovery_brief: DiscoveryBrief | None = None,
+        layout_overrides: dict | None = None,
     ) -> GroupResult:
         """Run the generation pipeline for a single page version.
 
@@ -251,6 +252,8 @@ class GenerationPipeline:
             slug: Page slug (e.g. "home", "about").
             version_number: Version number to write to.
             page_prompt: The prompt describing what to build for this page.
+            layout_overrides: Per-page StyleSpec overrides merged over the
+                resolved spec for THIS page only (project spec untouched).
 
         Returns:
             GroupResult from the Prompture pipeline.
@@ -971,6 +974,30 @@ class GenerationPipeline:
                         initial_state["style_spec"] = project.style_spec.model_dump_json()
                     else:
                         initial_state["style_spec"] = StyleSpec().model_dump_json()
+
+            # Per-page layout overrides: merge over the resolved spec for this
+            # page only. self.style_spec_text / project.style_spec stay as the
+            # Designer/direction produced them (they are persisted project-wide).
+            if layout_overrides:
+                try:
+                    from prompture import clean_json_text as _cjt_lo
+
+                    from ..models import effective_style_spec
+
+                    _base_spec = StyleSpec.model_validate(
+                        json.loads(_cjt_lo(initial_state["style_spec"]))
+                    )
+                    initial_state["style_spec"] = effective_style_spec(
+                        _base_spec, layout_overrides
+                    ).model_dump_json()
+                    logger.info(
+                        "Applied %d layout override(s) for page '%s': %s",
+                        len(layout_overrides), slug, sorted(layout_overrides),
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to apply layout overrides for page '%s'", slug, exc_info=True
+                    )
 
             # --- Cancellation check after Designer ---
             if cancel_event and cancel_event.is_set():

@@ -259,6 +259,7 @@ class ProjectGenerationPipeline:
         cancel_event: asyncio.Event | None = None,
         conversation_context: str = "",
         discovery_brief: DiscoveryBrief | None = None,
+        layout_overrides: dict | None = None,
     ) -> GroupResult:
         t0 = time.monotonic()
         model = project.model or settings.default_model
@@ -587,14 +588,27 @@ class ProjectGenerationPipeline:
                 if not self.style_spec_text:
                     self.style_spec_text = spec.model_dump_json()
 
+            # Per-page layout overrides: the tokens file and dev brief for this
+            # run use the merged spec; self.style_spec_text stays the raw
+            # Designer output (persisted project-wide by generation_runner).
+            effective_spec = spec
+            if layout_overrides:
+                from ..models import effective_style_spec
+
+                effective_spec = effective_style_spec(spec, layout_overrides)
+                logger.info(
+                    "Applied %d layout override(s) for page '%s': %s",
+                    len(layout_overrides), slug, sorted(layout_overrides),
+                )
+
             # Rewrite the tokens file only when the design actually changed
             # (or on first build) — scoped follow-ups must not clobber it.
             if fresh_spec or version_number == 1:
-                tokens_css = render_tokens_css(spec, template.tokens_format)
+                tokens_css = render_tokens_css(effective_spec, template.tokens_format)
                 ws.write_file(template.tokens_path, tokens_css)
                 _on_file_written(template.tokens_path)
                 if template.conventions_path:
-                    ws.write_file(template.conventions_path, render_conventions_css(spec))
+                    ws.write_file(template.conventions_path, render_conventions_css(effective_spec))
                     _on_file_written(template.conventions_path)
                 _checkpoint(f"v{version_number}: design tokens")
 
@@ -678,8 +692,7 @@ class ProjectGenerationPipeline:
                 discovery_brief_text,
                 memory_block,
                 f"## Site plan\n{self.site_plan_text}",
-                f"## Template contract — follow this exactly\n{template_doc}" if template_doc else "",
-                (
+                f"## Template contract — follow this exactly\n{template_doc}" if template_doc else "",                (
                     f"## Design tokens\nAlready written to `{template.tokens_path}` by the "
                     "Designer. Consume these variables everywhere; never hardcode colors/fonts."
                 )
@@ -692,6 +705,13 @@ class ProjectGenerationPipeline:
                 ),
                 uploads_listing,
                 components_listing,
+                (
+                    "## Page layout overrides\nThis page deviates from the project "
+                    "design system — the tokens file already reflects the values "
+                    "below. Honor them for this page's layout:\n"
+                    + "\n".join(f"- {k}: {v}" for k, v in layout_overrides.items())
+                    if layout_overrides else ""
+                ),
                 (f"## Conversation context\n{conversation_context}" if conversation_context else ""),
                 task_text,
             ) if p]
