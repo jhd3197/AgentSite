@@ -19,7 +19,7 @@ const TYPE_META = {
   failed_resource: { label: "Broken asset", icon: LinkBreak, tone: "text-amber-400 bg-amber-500/10 border-amber-500/30" },
   dead_click: { label: "Dead click", icon: CursorClick, tone: "text-purple-400 bg-purple-500/10 border-purple-500/30" },
   repeat_click: { label: "Repeated clicks", icon: Repeat, tone: "text-purple-400 bg-purple-500/10 border-purple-500/30" },
-  a11y_violation: { label: "A11y", icon: UniversalAccess, tone: "text-cyan-400 bg-cyan-500/10 border-cyan-500/30" },
+  a11y_violation: { label: "A11y", icon: PersonSimpleCircle, tone: "text-cyan-400 bg-cyan-500/10 border-cyan-500/30" },
 };
 
 const ERROR_TYPES = ["js_error", "promise_rejection", "console_error"];
