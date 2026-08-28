@@ -978,6 +978,32 @@ class ProjectGenerationPipeline:
                 except Exception:
                     logger.warning("Critique panel failed (non-fatal)", exc_info=True)
 
+            # Phase 2 (components) — auto-detect reusable sections in any
+            # built/entry HTML pages and save the best few to the library.
+            # Node/React workspaces yield nothing (their index.html is just
+            # a root div) — the detector is heuristic and never fatal.
+            components_detected: list[dict] = []
+            if success and self._project_component_repo is not None:
+                try:
+                    from .component_detector import MAX_AUTO_SAVE, save_detected_components
+
+                    for fpath, content in files_content.items():
+                        if len(components_detected) >= MAX_AUTO_SAVE:
+                            break
+                        if not fpath.lower().endswith(".html") or not content:
+                            continue
+                        detected = await save_detected_components(
+                            project_id=project.id,
+                            page_slug=slug,
+                            version=version_number,
+                            html=content,
+                            repo=self._project_component_repo,
+                            max_save=MAX_AUTO_SAVE - len(components_detected),
+                        )
+                        components_detected.extend(detected)
+                except Exception:
+                    logger.warning("Component auto-detection failed (non-fatal)", exc_info=True)
+
             await self._emit("generation_complete", data={
                 "success": success,
                 "slug": slug,
@@ -988,6 +1014,7 @@ class ProjectGenerationPipeline:
                 "approved": approved,
                 "verify_ok": verify_ok,
                 "bucket": decision.bucket,
+                "components_detected": components_detected,
             })
 
             return GroupResult(

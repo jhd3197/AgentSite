@@ -161,6 +161,7 @@ async def start_generation_task(
             on_event=on_event,
             agent_configs=agent_configs,
             provider_keys=merged_provider_keys or None,
+            project_component_repo=project_component_repo,
         )
 
     def _collect_files() -> tuple[list[str], dict[str, str]]:

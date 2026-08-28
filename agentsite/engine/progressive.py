@@ -704,6 +704,23 @@ class ProgressivePipeline:
                 if content is not None:
                     files_content[fpath] = content
 
+            # Phase 2 (components) — auto-detect reusable sections in the
+            # final assembled document and save the best few to the library.
+            components_detected: list[dict] = []
+            if self._project_component_repo is not None:
+                try:
+                    from .component_detector import save_detected_components
+
+                    components_detected = await save_detected_components(
+                        project_id=project.id,
+                        page_slug=slug,
+                        version=version_number,
+                        html=final_doc,
+                        repo=self._project_component_repo,
+                    )
+                except Exception:
+                    logger.warning("Component auto-detection failed (non-fatal)", exc_info=True)
+
             await self._emit("generation_complete", data={
                 "success": True,
                 "slug": slug,
@@ -711,6 +728,7 @@ class ProgressivePipeline:
                 "files": final_files,
                 "files_content": files_content,
                 "usage": self._combined_usage,
+                "components_detected": components_detected,
             })
 
             return GroupResult(

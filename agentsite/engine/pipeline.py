@@ -188,12 +188,14 @@ class GenerationPipeline:
         agent_configs: dict[str, AgentConfig] | None = None,
         cachibot_api_key: str | None = None,
         provider_keys: dict[str, str] | None = None,
+        project_component_repo: Any | None = None,
     ) -> None:
         self._pm = project_manager
         self._on_event = on_event
         self._agent_configs = agent_configs
         self._cachibot_api_key = cachibot_api_key
         self._provider_keys = provider_keys
+        self._project_component_repo = project_component_repo
         self.agent_runs: list[AgentRun] = []
         self._active_runs: dict[str, AgentRun] = {}
         self._run_start_times: dict[str, float] = {}
@@ -1310,6 +1312,25 @@ class GenerationPipeline:
                 except Exception:
                     logger.warning("Critique panel failed (non-fatal)", exc_info=True)
 
+            # Phase 2 (components) — auto-detect reusable sections in the
+            # final page HTML and save the best few to the project library.
+            components_detected: list[dict] = []
+            if result.success and self._project_component_repo is not None:
+                try:
+                    from .component_detector import save_detected_components
+
+                    index_html = files_content.get("index.html", "")
+                    if index_html:
+                        components_detected = await save_detected_components(
+                            project_id=project.id,
+                            page_slug=slug,
+                            version=version_number,
+                            html=index_html,
+                            repo=self._project_component_repo,
+                        )
+                except Exception:
+                    logger.warning("Component auto-detection failed (non-fatal)", exc_info=True)
+
             await self._emit(
                 "generation_complete",
                 data={
@@ -1319,6 +1340,7 @@ class GenerationPipeline:
                     "files": final_files,
                     "files_content": files_content,
                     "usage": combined_usage,
+                    "components_detected": components_detected,
                 },
             )
 
