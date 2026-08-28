@@ -27,6 +27,7 @@ from typing import Any
 
 from prompture import AgentCallbacks, AsyncAgent, GroupResult, clean_json_text
 
+from ..agents.component_tools import component_catalog_lines
 from ..agents.orchestrator import _agent_model, _apply_agent_overrides
 from ..agents.personas import PROJECT_DEVELOPER_PERSONA, PROJECT_REVIEWER_PERSONA
 from ..agents.workspace_tools import dev_workspace_tools, reviewer_workspace_tools
@@ -71,12 +72,14 @@ class ProjectGenerationPipeline:
         agent_configs: dict[str, AgentConfig] | None = None,
         cachibot_api_key: str | None = None,
         provider_keys: dict[str, str] | None = None,
+        project_component_repo: Any | None = None,
     ) -> None:
         self._pm = project_manager
         self._on_event = on_event
         self._agent_configs = agent_configs
         self._cachibot_api_key = cachibot_api_key
         self._provider_keys = provider_keys
+        self._project_component_repo = project_component_repo
         self.agent_runs: list[AgentRun] = []
         self._agent_models: dict[str, str] = {}
         self._usage: dict[str, Any] = {}
@@ -442,6 +445,17 @@ class ProjectGenerationPipeline:
                     f"- uploads/{name}" for name in uploads
                 )
 
+            component_lines = await component_catalog_lines(project.id, self._project_component_repo)
+            components_listing = ""
+            if component_lines:
+                components_listing = (
+                    "## Reusable component library\n"
+                    + "\n".join(f"- {line}" for line in component_lines)
+                    + "\nWhen a planned section matches one of these, PREFER "
+                    "render_block(id_or_slug, config) and adapt the rendered HTML "
+                    "instead of writing the markup from scratch."
+                )
+
             # -- Phase A: PM (skipped for tweaks — existing plan reused) --
             site_plan: SitePlan | None = None
             if run_pm:
@@ -613,6 +627,7 @@ class ProjectGenerationPipeline:
                 "template": template,
                 "project_id": project.id,
                 "project_dir": self._pm.project_dir(project.id),
+                "project_component_repo": self._project_component_repo,
                 "written_files": written_files,
                 "on_file_written": _on_file_written,
                 "on_preview_update": _on_preview_update,
@@ -676,6 +691,7 @@ class ProjectGenerationPipeline:
                     else ""
                 ),
                 uploads_listing,
+                components_listing,
                 (f"## Conversation context\n{conversation_context}" if conversation_context else ""),
                 task_text,
             ) if p]

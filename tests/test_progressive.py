@@ -209,7 +209,7 @@ def make_fake_run_agent(overrides: dict[str, list[str]] | None = None):
     overrides = overrides or {}
     calls: dict[str, int] = {}
 
-    async def fake(self, agent_key, system_prompt, user_prompt, model, deps=None):
+    async def fake(self, agent_key, system_prompt, user_prompt, model, deps=None, tools=None):
         calls[agent_key] = calls.get(agent_key, 0) + 1
         if agent_key in overrides:
             queue = overrides[agent_key]
