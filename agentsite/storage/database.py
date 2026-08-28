@@ -33,6 +33,8 @@ CREATE TABLE IF NOT EXISTS pages (
     title TEXT NOT NULL DEFAULT '',
     prompt TEXT NOT NULL DEFAULT '',
     layout_overrides TEXT,
+    canvas_x REAL,
+    canvas_y REAL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE(project_id, slug)
@@ -248,6 +250,16 @@ class Database:
         if page_columns and "layout_overrides" not in page_columns:
             logger.info("Adding 'layout_overrides' column to pages table...")
             await self._conn.execute("ALTER TABLE pages ADD COLUMN layout_overrides TEXT")
+            await self._conn.commit()
+
+        # Phase 6 — whiteboard canvas positions on pages
+        if page_columns and "canvas_x" not in page_columns:
+            logger.info("Adding 'canvas_x' column to pages table...")
+            await self._conn.execute("ALTER TABLE pages ADD COLUMN canvas_x REAL")
+            await self._conn.commit()
+        if page_columns and "canvas_y" not in page_columns:
+            logger.info("Adding 'canvas_y' column to pages table...")
+            await self._conn.execute("ALTER TABLE pages ADD COLUMN canvas_y REAL")
             await self._conn.commit()
 
         # Phase 13 — add strategy + model columns to agent_runs if missing

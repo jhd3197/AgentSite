@@ -12,11 +12,13 @@ import {
   Robot,
   ArrowUpRight,
   GithubLogo,
+  MapTrifold,
 } from "@phosphor-icons/react";
 import ThemeToggle from "../shared/ThemeToggle";
 
 const projectNav = [
   { path: "", label: "Overview & Pages", icon: Kanban, end: true },
+  { path: "/canvas", label: "Canvas", icon: MapTrifold },
   { path: "/brand", label: "Brand", icon: PaintBrush },
   { path: "/navigation", label: "Navigation", icon: List },
   { path: "/library", label: "Library", icon: Books },

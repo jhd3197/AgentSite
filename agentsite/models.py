@@ -459,6 +459,12 @@ class Page(BaseModel):
             "None/absent keys inherit the project value."
         ),
     )
+    canvas_x: float | None = Field(
+        default=None, description="Whiteboard canvas X position; None = auto-layout."
+    )
+    canvas_y: float | None = Field(
+        default=None, description="Whiteboard canvas Y position; None = auto-layout."
+    )
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 

@@ -42,6 +42,8 @@ class UpdatePageRequest(BaseModel):
     title: str | None = None
     prompt: str | None = None
     layout_overrides: dict | None = None  # partial StyleSpec dict; null/{} clears
+    canvas_x: float | None = None  # whiteboard position; null clears
+    canvas_y: float | None = None
 
 
 # -- Project CRUD --
@@ -253,6 +255,10 @@ async def update_page(
         page.title = req.title
     if req.prompt is not None:
         page.prompt = req.prompt
+    if "canvas_x" in req.model_fields_set:
+        page.canvas_x = req.canvas_x
+    if "canvas_y" in req.model_fields_set:
+        page.canvas_y = req.canvas_y
     if "layout_overrides" in req.model_fields_set:
         if not req.layout_overrides:
             page.layout_overrides = None  # null or {} clears overrides

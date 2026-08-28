@@ -4,6 +4,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import App from "./App";
 import DashboardPage from "./pages/DashboardPage";
 import ProjectPage from "./pages/ProjectPage";
+import ProjectCanvasPage from "./pages/ProjectCanvasPage";
 import ProjectSettingsPage from "./pages/ProjectSettingsPage";
 import ProjectBrandPage from "./pages/project/brand";
 import PageBuilderPage from "./pages/PageBuilderPage";
@@ -34,6 +35,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             <Route path="settings/api-keys" element={<ApiKeysPage />} />
             <Route path="settings/models" element={<ModelsPage />} />
             <Route path="project/:projectId" element={<ProjectPage />} />
+            <Route path="project/:projectId/canvas" element={<ProjectCanvasPage />} />
             <Route path="project/:projectId/settings" element={<ProjectSettingsPage />} />
             <Route path="project/:projectId/brand" element={<ProjectBrandPage />} />
             <Route path="project/:projectId/navigation" element={<ProjectNavigationPage />} />
