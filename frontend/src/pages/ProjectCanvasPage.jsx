@@ -429,6 +429,7 @@ export default function ProjectCanvasPage() {
               onClick={() => zoomAtCenter(1 / 1.25)}
               className="hover:text-white"
               title="Zoom out"
+              aria-label="Zoom out"
             >
               <Minus size={12} />
             </button>
@@ -439,6 +440,7 @@ export default function ProjectCanvasPage() {
               onClick={() => zoomAtCenter(1.25)}
               className="hover:text-white"
               title="Zoom in"
+              aria-label="Zoom in"
             >
               <Plus size={12} />
             </button>
@@ -447,6 +449,7 @@ export default function ProjectCanvasPage() {
             onClick={resetView}
             className="bg-slate-900 border border-slate-800 rounded-full w-9 h-9 flex items-center justify-center hover:bg-slate-800 text-slate-400 hover:text-white transition-colors shadow-xl"
             title="Reset view"
+            aria-label="Reset view"
           >
             <ArrowsOutSimple size={16} />
           </button>
