@@ -8,7 +8,15 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from pydantic import BaseModel
 
 from ...engine.generation_runner import start_generation_task
-from ..deps import get_agent_config_repo, get_agent_run_repo, get_page_repo, get_pm, get_repo, get_version_repo
+from ..deps import (
+    get_agent_config_repo,
+    get_agent_run_repo,
+    get_page_repo,
+    get_pm,
+    get_project_component_repo,
+    get_repo,
+    get_version_repo,
+)
 from ..websocket import ws_manager
 
 logger = logging.getLogger("agentsite.api.generate")
@@ -39,6 +47,7 @@ async def start_generation(
     pm=Depends(get_pm),
     agent_run_repo=Depends(get_agent_run_repo),
     agent_config_repo=Depends(get_agent_config_repo),
+    project_component_repo=Depends(get_project_component_repo),
 ):
     """Start page generation — creates a new version and runs the pipeline."""
     try:
@@ -62,6 +71,7 @@ async def start_generation(
             direction_id=req.direction_id,
             inherits_from=req.inherits_from,
             watch_feedback=req.watch_feedback,
+            project_component_repo=project_component_repo,
         )
     except ValueError as exc:
         msg = str(exc)

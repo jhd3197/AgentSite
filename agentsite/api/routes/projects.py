@@ -38,6 +38,14 @@ class CreatePageRequest(BaseModel):
     prompt: str = ""
 
 
+class UpdatePageRequest(BaseModel):
+    title: str | None = None
+    prompt: str | None = None
+    layout_overrides: dict | None = None  # partial StyleSpec dict; null/{} clears
+    canvas_x: float | None = None  # whiteboard position; null clears
+    canvas_y: float | None = None
+
+
 # -- Project CRUD --
 
 @router.get("/{project_id}/quality")
@@ -229,6 +237,53 @@ async def get_page(project_id: str, slug: str, page_repo=Depends(get_page_repo))
     page = await page_repo.get_by_slug(project_id, slug)
     if page is None:
         raise HTTPException(status_code=404, detail="Page not found")
+    return page
+
+
+@router.patch("/{project_id}/pages/{slug}", response_model=Page)
+async def update_page(
+    project_id: str,
+    slug: str,
+    req: UpdatePageRequest,
+    repo=Depends(get_repo),
+    page_repo=Depends(get_page_repo),
+):
+    page = await page_repo.get_by_slug(project_id, slug)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Page not found")
+    if req.title is not None:
+        page.title = req.title
+    if req.prompt is not None:
+        page.prompt = req.prompt
+    if "canvas_x" in req.model_fields_set:
+        page.canvas_x = req.canvas_x
+    if "canvas_y" in req.model_fields_set:
+        page.canvas_y = req.canvas_y
+    if "layout_overrides" in req.model_fields_set:
+        if not req.layout_overrides:
+            page.layout_overrides = None  # null or {} clears overrides
+        else:
+            unknown = sorted(set(req.layout_overrides) - set(StyleSpec.model_fields))
+            if unknown:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unknown StyleSpec field(s): {', '.join(unknown)}",
+                )
+            # Validate values by merging over the project's current spec
+            project = await repo.get(project_id)
+            from ...models import effective_style_spec
+
+            try:
+                effective_style_spec(
+                    (project.style_spec if project else None) or StyleSpec(),
+                    req.layout_overrides,
+                )
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=422, detail=f"Invalid layout_overrides: {exc}"
+                ) from exc
+            page.layout_overrides = req.layout_overrides
+    await page_repo.update(page)
     return page
 
 

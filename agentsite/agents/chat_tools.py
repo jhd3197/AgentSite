@@ -13,11 +13,6 @@ from typing import Any, Literal
 
 from prompture import RunContext, ToolRegistry
 
-from ..engine.blocks import (
-    BUILTIN_BLOCKS as _BUILTIN_BLOCKS,
-    get_block as _get_block,
-    render_block as _render_block,
-)
 from ..engine.component_extractor import extract as _extract_component
 from ..engine.generation_runner import start_generation_task
 from ..engine.html_query import (
@@ -31,6 +26,7 @@ from ..engine.html_query import (
 )
 from ..engine.interrupt import mailbox
 from ..models import BlockFieldModel, ProjectComponent
+from .component_tools import list_blocks, list_project_components, render_block
 
 logger = logging.getLogger("agentsite.chat_tools")
 
@@ -102,6 +98,7 @@ async def start_build(
             pm=deps["pm"],
             model=deps.get("model", ""),
             provider_keys=deps.get("provider_keys"),
+            project_component_repo=deps.get("project_component_repo"),
             discovery_brief=discovery_brief,
             direction_id=direction_id,
         )
@@ -436,123 +433,11 @@ async def get_children(ctx: RunContext, id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Edit-mode block tools — let the agent insert pre-built sections (hero,
-# CTA banner, feature grid, testimonial) instead of writing every layout
-# from scratch. The agent's flow:
-#   1. list_blocks() → see what's available
-#   2. render_block(block_id, config) → get the HTML string
-#   3. patch(kind='set-outer-html', id=<parent.id>, html=<rendered>)
+# Component-library tools (list_blocks / render_block /
+# list_project_components) live in agents/component_tools.py — shared with
+# the generation-time developer agent and progressive section agents — and
+# are imported above + registered on edit_registry below.
 # ---------------------------------------------------------------------------
-
-
-async def list_blocks(ctx: RunContext) -> str:  # noqa: ARG001 — ctx kept for API symmetry
-    """List every available reusable block (hero, CTA, feature grid, etc).
-
-    Use this BEFORE `render_block` to discover block ids + their declared
-    editable fields. Returns a compact JSON listing — just metadata, no
-    templates.
-    """
-    out = [
-        {
-            "id": b["id"],
-            "name": b["name"],
-            "category": b["category"],
-            "description": b["description"],
-            "fields": [
-                {"key": f["key"], "type": f["type"], "label": f.get("label", f["key"])}
-                for f in b["fields"]
-            ],
-        }
-        for b in _BUILTIN_BLOCKS
-    ]
-    return json.dumps(out)
-
-
-async def render_block(
-    ctx: RunContext,
-    block_id: str,
-    config: dict[str, Any] | None = None,
-) -> str:
-    """Render a block to HTML with the given config — ready to feed into
-    a ``patch(kind='set-outer-html', html=...)`` call.
-
-    Resolves against BOTH the built-in catalog (`list_blocks`) AND the
-    project's saved components (`list_project_components`). Use either
-    a builtin id like ``'hero-split'`` or a project component slug like
-    ``'pricing-card'``.
-
-    Args:
-        block_id: Builtin id OR project component slug.
-        config: Field values overriding the block's declared defaults.
-            Any field you leave out keeps its default. Example:
-            ``{'heading': 'New product', 'accent': '#16a34a'}``.
-
-    Returns:
-        JSON ``{"html": "<section …>…</section>"}`` — the agent then
-        issues a ``patch`` with this HTML to insert the block at the
-        chosen location.
-    """
-    definition = _get_block(block_id)
-    if definition is None:
-        # Fall back to project components — block_id may be a custom slug.
-        project_id = ctx.deps.get("project_id")
-        component_repo = ctx.deps.get("project_component_repo")
-        if project_id and component_repo:
-            pc = await component_repo.get_by_slug(project_id, block_id)
-            if pc is not None:
-                definition = {
-                    "id": pc.slug,
-                    "name": pc.name,
-                    "category": pc.category,
-                    "description": pc.description,
-                    "thumbnail": pc.thumbnail,
-                    "template": pc.template,
-                    "fields": [f.model_dump() for f in pc.fields],
-                }
-    if definition is None:
-        return json.dumps({"error": f"Unknown block_id (no builtin or project component): {block_id}"})
-    try:
-        html = _render_block(definition, config or {})
-    except Exception as exc:
-        return json.dumps({"error": f"render failed: {exc}"})
-    return json.dumps({"html": html, "block_id": block_id})
-
-
-# ---------------------------------------------------------------------------
-# Edit-mode component tools — Phase 4. The agent can list project-scoped
-# saved components, propose extraction when it sees repetition, and render
-# any of them (same shape as builtin render_block, but resolved against
-# the project's library).
-# ---------------------------------------------------------------------------
-
-
-async def list_project_components(ctx: RunContext) -> str:
-    """List every reusable component saved in this project's library.
-
-    Returns metadata (id, slug, name, category, description, fields) for
-    each — call this BEFORE list_blocks if the user refers to something
-    by a custom name like 'pricing card' that doesn't match a builtin.
-    """
-    project_id = ctx.deps.get("project_id")
-    component_repo = ctx.deps.get("project_component_repo")
-    if not project_id or component_repo is None:
-        return json.dumps([])
-    items = await component_repo.list_by_project(project_id)
-    out = [
-        {
-            "id": c.id,
-            "slug": c.slug,
-            "name": c.name,
-            "category": c.category,
-            "description": c.description,
-            "fields": [
-                {"key": f.key, "type": f.type, "label": f.label}
-                for f in c.fields
-            ],
-        }
-        for c in items
-    ]
-    return json.dumps(out)
 
 
 async def extract_component(

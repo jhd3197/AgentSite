@@ -27,6 +27,7 @@ from typing import Any
 
 from prompture import AgentCallbacks, AsyncAgent, GroupResult, clean_json_text
 
+from ..agents.component_tools import component_catalog_lines
 from ..agents.orchestrator import _agent_model, _apply_agent_overrides
 from ..agents.personas import PROJECT_DEVELOPER_PERSONA, PROJECT_REVIEWER_PERSONA
 from ..agents.workspace_tools import dev_workspace_tools, reviewer_workspace_tools
@@ -71,12 +72,14 @@ class ProjectGenerationPipeline:
         agent_configs: dict[str, AgentConfig] | None = None,
         cachibot_api_key: str | None = None,
         provider_keys: dict[str, str] | None = None,
+        project_component_repo: Any | None = None,
     ) -> None:
         self._pm = project_manager
         self._on_event = on_event
         self._agent_configs = agent_configs
         self._cachibot_api_key = cachibot_api_key
         self._provider_keys = provider_keys
+        self._project_component_repo = project_component_repo
         self.agent_runs: list[AgentRun] = []
         self._agent_models: dict[str, str] = {}
         self._usage: dict[str, Any] = {}
@@ -256,6 +259,7 @@ class ProjectGenerationPipeline:
         cancel_event: asyncio.Event | None = None,
         conversation_context: str = "",
         discovery_brief: DiscoveryBrief | None = None,
+        layout_overrides: dict | None = None,
     ) -> GroupResult:
         t0 = time.monotonic()
         model = project.model or settings.default_model
@@ -442,6 +446,17 @@ class ProjectGenerationPipeline:
                     f"- uploads/{name}" for name in uploads
                 )
 
+            component_lines = await component_catalog_lines(project.id, self._project_component_repo)
+            components_listing = ""
+            if component_lines:
+                components_listing = (
+                    "## Reusable component library\n"
+                    + "\n".join(f"- {line}" for line in component_lines)
+                    + "\nWhen a planned section matches one of these, PREFER "
+                    "render_block(id_or_slug, config) and adapt the rendered HTML "
+                    "instead of writing the markup from scratch."
+                )
+
             # -- Phase A: PM (skipped for tweaks — existing plan reused) --
             site_plan: SitePlan | None = None
             if run_pm:
@@ -573,14 +588,27 @@ class ProjectGenerationPipeline:
                 if not self.style_spec_text:
                     self.style_spec_text = spec.model_dump_json()
 
+            # Per-page layout overrides: the tokens file and dev brief for this
+            # run use the merged spec; self.style_spec_text stays the raw
+            # Designer output (persisted project-wide by generation_runner).
+            effective_spec = spec
+            if layout_overrides:
+                from ..models import effective_style_spec
+
+                effective_spec = effective_style_spec(spec, layout_overrides)
+                logger.info(
+                    "Applied %d layout override(s) for page '%s': %s",
+                    len(layout_overrides), slug, sorted(layout_overrides),
+                )
+
             # Rewrite the tokens file only when the design actually changed
             # (or on first build) — scoped follow-ups must not clobber it.
             if fresh_spec or version_number == 1:
-                tokens_css = render_tokens_css(spec, template.tokens_format)
+                tokens_css = render_tokens_css(effective_spec, template.tokens_format)
                 ws.write_file(template.tokens_path, tokens_css)
                 _on_file_written(template.tokens_path)
                 if template.conventions_path:
-                    ws.write_file(template.conventions_path, render_conventions_css(spec))
+                    ws.write_file(template.conventions_path, render_conventions_css(effective_spec))
                     _on_file_written(template.conventions_path)
                 _checkpoint(f"v{version_number}: design tokens")
 
@@ -613,6 +641,7 @@ class ProjectGenerationPipeline:
                 "template": template,
                 "project_id": project.id,
                 "project_dir": self._pm.project_dir(project.id),
+                "project_component_repo": self._project_component_repo,
                 "written_files": written_files,
                 "on_file_written": _on_file_written,
                 "on_preview_update": _on_preview_update,
@@ -663,8 +692,7 @@ class ProjectGenerationPipeline:
                 discovery_brief_text,
                 memory_block,
                 f"## Site plan\n{self.site_plan_text}",
-                f"## Template contract — follow this exactly\n{template_doc}" if template_doc else "",
-                (
+                f"## Template contract — follow this exactly\n{template_doc}" if template_doc else "",                (
                     f"## Design tokens\nAlready written to `{template.tokens_path}` by the "
                     "Designer. Consume these variables everywhere; never hardcode colors/fonts."
                 )
@@ -676,6 +704,14 @@ class ProjectGenerationPipeline:
                     else ""
                 ),
                 uploads_listing,
+                components_listing,
+                (
+                    "## Page layout overrides\nThis page deviates from the project "
+                    "design system — the tokens file already reflects the values "
+                    "below. Honor them for this page's layout:\n"
+                    + "\n".join(f"- {k}: {v}" for k, v in layout_overrides.items())
+                    if layout_overrides else ""
+                ),
                 (f"## Conversation context\n{conversation_context}" if conversation_context else ""),
                 task_text,
             ) if p]
@@ -962,6 +998,32 @@ class ProjectGenerationPipeline:
                 except Exception:
                     logger.warning("Critique panel failed (non-fatal)", exc_info=True)
 
+            # Phase 2 (components) — auto-detect reusable sections in any
+            # built/entry HTML pages and save the best few to the library.
+            # Node/React workspaces yield nothing (their index.html is just
+            # a root div) — the detector is heuristic and never fatal.
+            components_detected: list[dict] = []
+            if success and self._project_component_repo is not None:
+                try:
+                    from .component_detector import MAX_AUTO_SAVE, save_detected_components
+
+                    for fpath, content in files_content.items():
+                        if len(components_detected) >= MAX_AUTO_SAVE:
+                            break
+                        if not fpath.lower().endswith(".html") or not content:
+                            continue
+                        detected = await save_detected_components(
+                            project_id=project.id,
+                            page_slug=slug,
+                            version=version_number,
+                            html=content,
+                            repo=self._project_component_repo,
+                            max_save=MAX_AUTO_SAVE - len(components_detected),
+                        )
+                        components_detected.extend(detected)
+                except Exception:
+                    logger.warning("Component auto-detection failed (non-fatal)", exc_info=True)
+
             await self._emit("generation_complete", data={
                 "success": success,
                 "slug": slug,
@@ -972,6 +1034,7 @@ class ProjectGenerationPipeline:
                 "approved": approved,
                 "verify_ok": verify_ok,
                 "bucket": decision.bucket,
+                "components_detected": components_detected,
             })
 
             return GroupResult(

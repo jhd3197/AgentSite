@@ -36,6 +36,7 @@ from typing import Any
 
 from prompture import AsyncSequentialGroup, ErrorPolicy, GroupResult
 
+from ..agents.component_tools import component_catalog_lines, component_library_tools
 from ..agents.orchestrator import _agent_model, _apply_agent_overrides
 from ..agents.personas import LAYOUT_PERSONA, SECTION_PERSONA
 from ..config import settings
@@ -176,6 +177,7 @@ def build_section_prompt(
     style_spec_text: str,
     css: str,
     shared_components: list[str] | None = None,
+    available_components: list[str] | None = None,
 ) -> str:
     """Build the user prompt for one section agent."""
     lines = [
@@ -190,6 +192,12 @@ def build_section_prompt(
     if shared_components:
         lines.append("\n## Shared components (for context only — do NOT rebuild them)")
         lines.extend(f"- {c}" for c in shared_components)
+    if available_components:
+        lines.append(
+            "\n## Reusable components (call render_block(slug, config) to use one — "
+            "PREFER this over hand-writing markup when your section matches)"
+        )
+        lines.extend(f"- {c}" for c in available_components)
     lines.append("\n## styles.css (use ONLY these classes/tokens)")
     lines.append(css or "/* none provided */")
     lines.append(
@@ -234,6 +242,7 @@ class ProgressivePipeline:
         agent_configs: dict[str, AgentConfig] | None = None,
         cachibot_api_key: str | None = None,
         provider_keys: dict[str, str] | None = None,
+        project_component_repo: Any | None = None,
         max_parallel_sections: int = 3,
         max_section_attempts: int = 2,
     ) -> None:
@@ -242,6 +251,7 @@ class ProgressivePipeline:
         self._agent_configs = agent_configs
         self._cachibot_api_key = cachibot_api_key
         self._provider_keys = provider_keys
+        self._project_component_repo = project_component_repo
         self._max_parallel_sections = max(1, max_parallel_sections)
         self._max_section_attempts = max(1, max_section_attempts)
         self.agent_runs: list[AgentRun] = []
@@ -361,6 +371,7 @@ class ProgressivePipeline:
         user_prompt: str,
         model: str,
         deps: dict | None = None,
+        tools: Any | None = None,
     ) -> str:
         """Build and run a single-agent group; return its output text.
 
@@ -390,6 +401,7 @@ class ProgressivePipeline:
                 name=agent_key,
                 description=f"Progressive build step: {agent_key}",
                 options={"max_tokens": 8192},
+                tools=tools,
             )
             override_key = "developer"
 
@@ -440,12 +452,16 @@ class ProgressivePipeline:
         max_cost: float | None = None,
         budget_policy: str | None = None,
         discovery_brief: DiscoveryBrief | None = None,
+        layout_overrides: dict | None = None,
         **kwargs: Any,
     ) -> GroupResult:
         """Run the progressive pipeline for a single page version.
 
-        Extra kwargs are accepted (and ignored) for forward compatibility
-        with :meth:`GenerationPipeline.generate`.
+        ``layout_overrides`` is a per-page partial StyleSpec dict merged over
+        the resolved spec for this page's briefs only (the project spec and
+        ``self.style_spec_text`` stay untouched). Extra kwargs are accepted
+        (and ignored) for forward compatibility with
+        :meth:`GenerationPipeline.generate`.
         """
         model = project.model or settings.default_model
         version_dir = self._pm.ensure_version_dir(project.id, slug, version_number)
@@ -461,6 +477,7 @@ class ProgressivePipeline:
             "version_dir": version_dir,
             "assets_dir": self._pm.assets_dir(project.id),
             "project_id": project.id,
+            "project_component_repo": self._project_component_repo,
         }
 
         async def _push_preview(path: str, html: str) -> None:
@@ -549,6 +566,7 @@ class ProgressivePipeline:
                 ]
             keys = derive_section_keys(sections)
             shared_components = list(site_plan.shared_components) if site_plan is not None else []
+            available_components = await component_catalog_lines(project.id, self._project_component_repo)
 
             # --- Stage B: Designer → StyleSpec (same pattern as pipeline.py) ---
             required_agents = list(site_plan.required_agents) if site_plan is not None else ["designer"]
@@ -583,6 +601,26 @@ class ProgressivePipeline:
                 style_spec_text = (
                     project.style_spec.model_dump_json() if project.style_spec else StyleSpec().model_dump_json()
                 )
+
+            # Per-page layout overrides: merge over the resolved spec for this
+            # page's layout/section briefs only. self.style_spec_text keeps the
+            # Designer output verbatim (it is persisted project-wide).
+            if layout_overrides:
+                try:
+                    from prompture import clean_json_text as _cjt_lo
+
+                    from ..models import effective_style_spec
+
+                    _base_spec = StyleSpec.model_validate(json.loads(_cjt_lo(style_spec_text)))
+                    style_spec_text = effective_style_spec(_base_spec, layout_overrides).model_dump_json()
+                    logger.info(
+                        "Applied %d layout override(s) for page '%s': %s",
+                        len(layout_overrides), slug, sorted(layout_overrides),
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to apply layout overrides for page '%s'", slug, exc_info=True
+                    )
 
             # --- Stage C1: Layout skeleton → immediate first preview ---
             await self._emit("phase_start", data={"phase": "layout", "slug": slug, "version": version_number})
@@ -631,6 +669,7 @@ class ProgressivePipeline:
                         style_spec_text=style_spec_text,
                         css=css_text,
                         shared_components=shared_components,
+                        available_components=available_components,
                     )
                     attempts = 0
                     fallback = False
@@ -645,7 +684,10 @@ class ProgressivePipeline:
                                 if attempts == 1
                                 else build_repair_prompt(original_prompt=prompt, problems=problems, fragment=fragment)
                             )
-                            raw = await self._run_agent(agent_key, SECTION_PERSONA, attempt_prompt, dev_model, deps)
+                            raw = await self._run_agent(
+                                agent_key, SECTION_PERSONA, attempt_prompt, dev_model, deps,
+                                tools=component_library_tools,
+                            )
                             fragment = clean_fragment(raw)
                             problems = validate_fragment(fragment)
                             if not problems:
@@ -686,6 +728,23 @@ class ProgressivePipeline:
                 if content is not None:
                     files_content[fpath] = content
 
+            # Phase 2 (components) — auto-detect reusable sections in the
+            # final assembled document and save the best few to the library.
+            components_detected: list[dict] = []
+            if self._project_component_repo is not None:
+                try:
+                    from .component_detector import save_detected_components
+
+                    components_detected = await save_detected_components(
+                        project_id=project.id,
+                        page_slug=slug,
+                        version=version_number,
+                        html=final_doc,
+                        repo=self._project_component_repo,
+                    )
+                except Exception:
+                    logger.warning("Component auto-detection failed (non-fatal)", exc_info=True)
+
             await self._emit("generation_complete", data={
                 "success": True,
                 "slug": slug,
@@ -693,6 +752,7 @@ class ProgressivePipeline:
                 "files": final_files,
                 "files_content": files_content,
                 "usage": self._combined_usage,
+                "components_detected": components_detected,
             })
 
             return GroupResult(

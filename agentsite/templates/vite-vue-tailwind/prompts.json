@@ -1,0 +1,17 @@
+[
+  {
+    "id": "recipe-box",
+    "title": "Recipe collection app",
+    "prompt": "Build a site for Sunday Sauce, a home cook's recipe collection, with routes for Home, Recipes, and Favorites. The Recipes page should be a filterable grid (filter by course: breakfast, mains, desserts) driven by component state, with each card showing cook time and difficulty. The Favorites page lists recipes the user has starred — store starred state in a reactive module so it persists across routes. Warm kitchen aesthetic: cream background, tomato-red accent, rounded cards."
+  },
+  {
+    "id": "dev-portfolio",
+    "title": "Developer portfolio",
+    "prompt": "Create a portfolio for Alex Chen, a frontend engineer, with Home, Projects, Blog, and Contact routes. The Projects page needs six project cards with tech-stack badges and a tag filter that updates the visible cards using Vue state. The Contact page needs a form with client-side validation and a success state. Dark, code-editor-inspired look: near-black background, one neon accent color, monospace touches for labels."
+  },
+  {
+    "id": "event-microsite",
+    "title": "Conference microsite",
+    "prompt": "Build a microsite for Cascade Conf, a one-day web development conference, with Home, Schedule, Speakers, and Tickets routes. The Schedule page should be a timeline users can filter by track (design, engineering, career) via component state, and the Tickets page needs three tiers with a highlighted early-bird option. Bold conference energy: big display type, electric purple accent on dark, sticker-like badges."
+  }
+]

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { Plus, CaretRight, Globe, UploadSimple } from "@phosphor-icons/react";
+import { Plus, CaretRight, Globe, UploadSimple, MapTrifold } from "@phosphor-icons/react";
 import useProject from "../hooks/useProject";
 import { importHtml, importFromUrl } from "../api/importer";
 import PageCard from "../components/project/PageCard";
@@ -195,6 +195,13 @@ export default function ProjectPage() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => navigate(`/project/${projectId}/canvas`)}
+                  className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border border-slate-700"
+                >
+                  <MapTrifold size={14} />
+                  Canvas
+                </button>
                 <button
                   onClick={() => setShowImport(true)}
                   className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border border-slate-700"

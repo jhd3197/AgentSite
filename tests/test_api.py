@@ -13,6 +13,7 @@ from agentsite.storage.repository import (
     AgentConfigRepository,
     AgentRunRepository,
     PageRepository,
+    ProjectComponentRepository,
     ProjectRepository,
     VersionRepository,
 )
@@ -32,6 +33,7 @@ async def client(tmp_path):
     deps.version_repo = VersionRepository(deps.db)
     deps.agent_config_repo = AgentConfigRepository(deps.db)
     deps.agent_run_repo = AgentRunRepository(deps.db)
+    deps.project_component_repo = ProjectComponentRepository(deps.db)
 
     app = create_app()
     transport = ASGITransport(app=app)

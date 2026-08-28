@@ -438,6 +438,7 @@ export default function PageBuilderPage() {
       <PageBuilderHeader
         projectId={projectId}
         page={page}
+        project={project}
         device={device}
         onDeviceChange={(width, frame) => {
           setDevice(width);
@@ -448,6 +449,7 @@ export default function PageBuilderPage() {
         onVersionChange={setActiveVersion}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        onPageUpdated={refreshProject}
       />
 
       <div className="flex-1 flex overflow-hidden">

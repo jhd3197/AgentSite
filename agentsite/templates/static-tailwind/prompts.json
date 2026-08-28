@@ -1,0 +1,17 @@
+[
+  {
+    "id": "bakery",
+    "title": "Artisan bakery",
+    "prompt": "Build a four-page site for Crumb & Hearth, an artisan sourdough bakery: Home, Breads, Visit, and Contact. The home page needs a hero with the tagline \"Slow fermented, baked daily\", a grid of three bestselling loaves with prices, and a market-days schedule section. Use a warm rustic palette — cream, wheat, deep brown — with generous rounded corners, and keep the header, nav, and footer identical across all pages."
+  },
+  {
+    "id": "personal-trainer",
+    "title": "Personal trainer site",
+    "prompt": "Create a website for Dana Whitfield, a personal trainer, with Home, Programs, Results, and Book pages. Present three coaching programs as pricing cards with a highlighted most-popular tier, and give the Results page a grid of client transformations with short quotes. Athletic look: dark charcoal background, white type, one lime-green accent for CTAs, with a \"Book a free consult\" button in the header of every page."
+  },
+  {
+    "id": "wedding-venue",
+    "title": "Wedding venue",
+    "prompt": "Build a site for Willowmere Barn, a countryside wedding venue, with Home, The Venue, Galleries, and Enquire pages. The home page needs a full-width hero with image placeholder, an intro section with three feature columns (ceremony lawn, reception barn, on-site catering), and a testimonial strip. Romantic and airy: ivory background, sage green and dusty rose accents, elegant serif headings."
+  }
+]

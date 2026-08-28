@@ -249,6 +249,37 @@ class StyleSpec(BaseModel):
     accent_oklch: str | None = Field(default=None, description="Accent in OKLch.")
 
 
+def _deep_merge(base: dict, overrides: dict) -> dict:
+    """Recursively merge ``overrides`` over ``base`` (dicts merge, scalars replace)."""
+    merged = dict(base)
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def effective_style_spec(project_spec: StyleSpec, overrides: dict | None) -> StyleSpec:
+    """Merge per-page layout overrides over a project StyleSpec.
+
+    ``overrides`` is a partial StyleSpec dict: present, non-None keys replace
+    (or deep-merge into) the project values; absent/None keys inherit. Unknown
+    keys are ignored so callers can pass loosely-validated input. Returns the
+    project spec unchanged when there is nothing to merge.
+    """
+    if not overrides:
+        return project_spec
+    known = {
+        k: v
+        for k, v in overrides.items()
+        if k in StyleSpec.model_fields and v is not None
+    }
+    if not known:
+        return project_spec
+    return StyleSpec.model_validate(_deep_merge(project_spec.model_dump(), known))
+
+
 class GeneratedFile(BaseModel):
     """A single file produced by the Developer Agent."""
 
@@ -420,6 +451,20 @@ class Page(BaseModel):
     slug: str = Field(default="home")
     title: str = Field(default="Home Page")
     prompt: str = Field(default="")
+    layout_overrides: dict | None = Field(
+        default=None,
+        description=(
+            "Per-page StyleSpec overrides (partial dict, any subset of StyleSpec "
+            "fields). Deep-merged over the project's style_spec at generation time; "
+            "None/absent keys inherit the project value."
+        ),
+    )
+    canvas_x: float | None = Field(
+        default=None, description="Whiteboard canvas X position; None = auto-layout."
+    )
+    canvas_y: float | None = Field(
+        default=None, description="Whiteboard canvas Y position; None = auto-layout."
+    )
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 

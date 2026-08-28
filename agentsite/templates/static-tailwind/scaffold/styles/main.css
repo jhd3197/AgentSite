@@ -1,0 +1,20 @@
+/*
+ * Site styles — consumes design tokens from tokens.css only.
+ * Most styling lives in Tailwind utility classes in the HTML; keep this file
+ * for the few things utilities can't express (JS-toggled state hooks).
+ * Never hardcode colors, fonts, shadows, or radii here; use var(--token).
+ *
+ * NOTE: rules here are unlayered, so they beat Tailwind's layered utilities.
+ * That is exactly why the JS-toggled states below live here — but do NOT
+ * redefine anything Tailwind already provides (spacing, colors, display).
+ */
+
+/* ---------- Nav state hooks (toggled by scripts/main.js) ---------- */
+.site-nav.is-open {
+  display: block;
+}
+
+.site-nav__link.is-active {
+  color: var(--color-primary);
+  background-color: var(--color-surface);
+}

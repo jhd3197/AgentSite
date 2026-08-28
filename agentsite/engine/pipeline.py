@@ -52,6 +52,7 @@ def _agent_name_to_key(name: str) -> str:
         "agentsite_seo": "seo",
         "agentsite_accessibility": "accessibility",
         "agentsite_animation": "animation",
+        "agentsite_render_verify": "render_verify",
     }
     return _NAME_MAP.get(name, name)
 
@@ -188,12 +189,14 @@ class GenerationPipeline:
         agent_configs: dict[str, AgentConfig] | None = None,
         cachibot_api_key: str | None = None,
         provider_keys: dict[str, str] | None = None,
+        project_component_repo: Any | None = None,
     ) -> None:
         self._pm = project_manager
         self._on_event = on_event
         self._agent_configs = agent_configs
         self._cachibot_api_key = cachibot_api_key
         self._provider_keys = provider_keys
+        self._project_component_repo = project_component_repo
         self.agent_runs: list[AgentRun] = []
         self._active_runs: dict[str, AgentRun] = {}
         self._run_start_times: dict[str, float] = {}
@@ -240,6 +243,7 @@ class GenerationPipeline:
         cancel_event: asyncio.Event | None = None,
         conversation_context: str = "",
         discovery_brief: DiscoveryBrief | None = None,
+        layout_overrides: dict | None = None,
     ) -> GroupResult:
         """Run the generation pipeline for a single page version.
 
@@ -248,6 +252,8 @@ class GenerationPipeline:
             slug: Page slug (e.g. "home", "about").
             version_number: Version number to write to.
             page_prompt: The prompt describing what to build for this page.
+            layout_overrides: Per-page StyleSpec overrides merged over the
+                resolved spec for THIS page only (project spec untouched).
 
         Returns:
             GroupResult from the Prompture pipeline.
@@ -839,6 +845,7 @@ class GenerationPipeline:
                 "site_plan": site_plan_text,
                 "project_dir": self._pm.project_dir(project.id),
                 "review_feedback": "",
+                "verify_feedback": "",
                 "logo_url": project.logo_url or "",
                 "icon_url": project.icon_url or "",
                 "page_slug": slug,
@@ -968,6 +975,30 @@ class GenerationPipeline:
                     else:
                         initial_state["style_spec"] = StyleSpec().model_dump_json()
 
+            # Per-page layout overrides: merge over the resolved spec for this
+            # page only. self.style_spec_text / project.style_spec stay as the
+            # Designer/direction produced them (they are persisted project-wide).
+            if layout_overrides:
+                try:
+                    from prompture import clean_json_text as _cjt_lo
+
+                    from ..models import effective_style_spec
+
+                    _base_spec = StyleSpec.model_validate(
+                        json.loads(_cjt_lo(initial_state["style_spec"]))
+                    )
+                    initial_state["style_spec"] = effective_style_spec(
+                        _base_spec, layout_overrides
+                    ).model_dump_json()
+                    logger.info(
+                        "Applied %d layout override(s) for page '%s': %s",
+                        len(layout_overrides), slug, sorted(layout_overrides),
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to apply layout overrides for page '%s'", slug, exc_info=True
+                    )
+
             # --- Cancellation check after Designer ---
             if cancel_event and cancel_event.is_set():
                 await self._emit("generation_complete", data={
@@ -1020,6 +1051,7 @@ class GenerationPipeline:
                     provider_keys=self._provider_keys,
                     max_review_iterations=max_review_iterations,
                     review_threshold=review_threshold,
+                    render_verify=settings.verify_enabled,
                     **budget_kwargs,
                 )
             else:
@@ -1033,6 +1065,7 @@ class GenerationPipeline:
                     provider_keys=self._provider_keys,
                     max_review_iterations=max_review_iterations,
                     review_threshold=review_threshold,
+                    render_verify=settings.verify_enabled,
                     **budget_kwargs,
                 )
 
@@ -1310,6 +1343,25 @@ class GenerationPipeline:
                 except Exception:
                     logger.warning("Critique panel failed (non-fatal)", exc_info=True)
 
+            # Phase 2 (components) — auto-detect reusable sections in the
+            # final page HTML and save the best few to the project library.
+            components_detected: list[dict] = []
+            if result.success and self._project_component_repo is not None:
+                try:
+                    from .component_detector import save_detected_components
+
+                    index_html = files_content.get("index.html", "")
+                    if index_html:
+                        components_detected = await save_detected_components(
+                            project_id=project.id,
+                            page_slug=slug,
+                            version=version_number,
+                            html=index_html,
+                            repo=self._project_component_repo,
+                        )
+                except Exception:
+                    logger.warning("Component auto-detection failed (non-fatal)", exc_info=True)
+
             await self._emit(
                 "generation_complete",
                 data={
@@ -1319,6 +1371,7 @@ class GenerationPipeline:
                     "files": final_files,
                     "files_content": files_content,
                     "usage": combined_usage,
+                    "components_detected": components_detected,
                 },
             )
 

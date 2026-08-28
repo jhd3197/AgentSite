@@ -14,6 +14,8 @@ Expected ctx.deps keys:
     emit_event        async callable(type, data) | None — WS bridge for builds
     assets_dir        Path — uploads dir (generate_image target)
     asset_rel_prefix  str — rel prefix for generated image src paths
+    project_id        str — used to resolve saved project components
+    project_component_repo  ProjectComponentRepository | None
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from pathlib import Path
 
 from prompture import AsyncAgent, RunContext, ToolRegistry
 
+from .component_tools import list_blocks, list_project_components, render_block
 from .tools import generate_image
 
 logger = logging.getLogger("agentsite.workspace_tools")
@@ -431,6 +434,9 @@ dev_workspace_tools.register(run_command)
 dev_workspace_tools.register(list_uploads)
 dev_workspace_tools.register(generate_image)
 dev_workspace_tools.register(delegate_to_specialist)
+dev_workspace_tools.register(list_blocks)
+dev_workspace_tools.register(render_block)
+dev_workspace_tools.register(list_project_components)
 
 reviewer_workspace_tools = ToolRegistry()
 reviewer_workspace_tools.register(list_files)

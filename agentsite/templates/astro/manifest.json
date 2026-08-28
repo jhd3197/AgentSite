@@ -1,0 +1,16 @@
+{
+  "id": "astro",
+  "name": "Astro Multi-Page Site",
+  "description": "A content-driven multi-page site built with Astro 7: file-based routing, a shared layout, and token-driven CSS — compiled to plain static files.",
+  "kind": "node",
+  "install_cmd": ["npm", "install"],
+  "build_cmd": ["npm", "run", "build"],
+  "dev_cmd": ["npm", "run", "dev"],
+  "output_dir": "dist",
+  "entry": "index.html",
+  "tokens_path": "src/styles/tokens.css",
+  "tokens_format": "css-vars",
+  "conventions_path": "src/styles/conventions.css",
+  "protected_paths": ["package.json", "astro.config.mjs"],
+  "requires_tools": true
+}

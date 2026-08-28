@@ -21,6 +21,7 @@ from ..storage.repository import (
     AgentConfigRepository,
     AgentRunRepository,
     PageRepository,
+    ProjectComponentRepository,
     ProjectRepository,
     VersionRepository,
 )
@@ -44,6 +45,7 @@ async def start_generation_task(
     max_cost: float | None = None,
     budget_policy: str | None = None,
     provider_keys: dict[str, str] | None = None,
+    project_component_repo: ProjectComponentRepository | None = None,
     discovery_brief: dict | None = None,
     strategy: str | None = None,
     direction_id: str | None = None,
@@ -143,6 +145,7 @@ async def start_generation_task(
             on_event=on_event,
             agent_configs=agent_configs,
             provider_keys=merged_provider_keys or None,
+            project_component_repo=project_component_repo,
         )
     elif strategy == "progressive":
         pipeline = ProgressivePipeline(
@@ -150,6 +153,7 @@ async def start_generation_task(
             on_event=on_event,
             agent_configs=agent_configs,
             provider_keys=merged_provider_keys or None,
+            project_component_repo=project_component_repo,
         )
     else:
         pipeline = GenerationPipeline(
@@ -157,6 +161,7 @@ async def start_generation_task(
             on_event=on_event,
             agent_configs=agent_configs,
             provider_keys=merged_provider_keys or None,
+            project_component_repo=project_component_repo,
         )
 
     def _collect_files() -> tuple[list[str], dict[str, str]]:
@@ -212,6 +217,7 @@ async def start_generation_task(
                 max_cost=max_cost,
                 budget_policy=budget_policy,
                 discovery_brief=brief,
+                layout_overrides=page.layout_overrides,
             )
             if pipeline.style_spec_text:
                 try:

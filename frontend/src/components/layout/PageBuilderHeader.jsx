@@ -7,11 +7,13 @@ import {
 } from "@phosphor-icons/react";
 import DeviceSwitcher from "../builder/DeviceSwitcher";
 import VersionSelector from "../builder/VersionSelector";
+import LayoutOverridesControl from "../builder/LayoutOverridesControl";
 import { getExportUrl } from "../../api/assets";
 
 export default function PageBuilderHeader({
   projectId,
   page,
+  project,
   device,
   onDeviceChange,
   versions,
@@ -19,6 +21,7 @@ export default function PageBuilderHeader({
   onVersionChange,
   viewMode,
   onViewModeChange,
+  onPageUpdated,
 }) {
   const navigate = useNavigate();
 
@@ -40,6 +43,13 @@ export default function PageBuilderHeader({
       <DeviceSwitcher active={device} onChange={onDeviceChange} />
 
       <div className="flex items-center gap-3">
+        <LayoutOverridesControl
+          projectId={projectId}
+          page={page}
+          project={project}
+          onSaved={onPageUpdated}
+        />
+
         {versions?.length > 0 && (
           <VersionSelector
             versions={versions}
